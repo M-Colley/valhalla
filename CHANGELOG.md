@@ -1,6 +1,13 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: isolate nested defaults between Python `get_config()` calls
+   * FIXED: avoid repeated tar member scans and duplicate tile index entries when copying extracts
+   * FIXED: preserve GeoJSON polygon holes when selecting routing and elevation tiles
+   * FIXED: retain intersected grid cells when map-matching segments enter from the right or top
+   * FIXED: reject overflowing varints and invalid encoded-polyline bytes before shifting
+   * FIXED: reject invalid elevation coordinates and compressed tile sizes, and erase pending loads by key
+   * FIXED: apply the configured minimum linear cost factor to single-edge features
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)
@@ -20,6 +27,7 @@
    * FIXED: `service=driveway`, `parking_aisle` and `drive-through` are now destination only for trucks too, like they already were for cars [#6446](https://github.com/valhalla/valhalla/pull/6446)
    * FIXED: duplicate definition of `OverwriteBits` [#6478](https://github.com/valhalla/valhalla/pull/6478)
 * **Enhancement**
+   * CHANGED: avoid one heap allocation per optimizer annealing attempt
    * ADDED: more surface types [#6337](https://github.com/valhalla/valhalla/pull/6337)
    * ADDED: `steps_factor` bicycle costing option and `exclude_steps` location search filter [#6394](https://github.com/valhalla/valhalla/pull/6394)
    * ADDED: `stop_impact` in `trace_attributes` [#6368](https://github.com/valhalla/valhalla/pull/6368)

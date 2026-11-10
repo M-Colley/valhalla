@@ -8,6 +8,7 @@ import unittest.mock
 from pathlib import Path
 import struct
 import os
+from tempfile import TemporaryDirectory
 
 import valhalla_build_extract
 from valhalla_build_extract import GRAPHTILE_SKIP_BYTES, TILE_SIZES, TileHeader, TileResolver
@@ -49,6 +50,34 @@ def tile_base_to_path(base_x: int, base_y: int, level: int, fake_dir: Path) -> P
 
 
 class TestBuildExtract(unittest.TestCase):
+    def test_extract_from_tar_with_replaced_tile(self):
+        tile_name = "2/000/000/001.gph"
+        payloads = [b"old tile", b"replacement tile"]
+        with TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.tar"
+            output = Path(tmp) / "extract.tar"
+            with tarfile.open(source, "w") as tar:
+                for payload in payloads:
+                    member = tarfile.TarInfo(tile_name)
+                    member.size = len(payload)
+                    tar.addfile(member, BytesIO(payload))
+
+            resolver = TileResolver(source)
+            with resolver._tar_obj:
+                resolver.matched_paths = resolver.normalized_tile_paths
+                with self.assertRaises(SystemExit) as result:
+                    valhalla_build_extract.create_extracts({}, False, resolver, output)
+            self.assertEqual(result.exception.code, 0)
+
+            with tarfile.open(output) as tar:
+                self.assertEqual(tar.extractfile(tile_name).read(), payloads[-1])
+                index = tar.extractfile("index.bin").read()
+                self.assertEqual(len(index), INDEX_BIN_SIZE)
+                offset, tile_id, size = struct.unpack(INDEX_BIN_FORMAT, index)
+                self.assertEqual(tile_id, valhalla_build_extract.get_tile_id(tile_name))
+                self.assertEqual(size, len(payloads[-1]))
+                self.assertEqual(offset, tar.getmember(tile_name).offset_data)
+
     def test_tile_intersects_bbox(self):
         # bogus tile dir
         tile_dir = Path("/foo/")
@@ -347,6 +376,25 @@ class TestGeofabrikRegion(unittest.TestCase):
             self.MOCK_INDEX["features"][2]["geometry"]  # France has Polygon type
         )
         self.assertEqual(len(polygons), 1)
+
+    @unittest.skipUnless(_has_shapely(), "shapely not installed")
+    def test_polygon_holes_exclude_tiles(self):
+        outer = [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]
+        hole = [[1, 1], [3, 1], [3, 3], [1, 3], [1, 1]]
+        tile_dir = Path("/foo/")
+        inside = tile_base_to_path(0.25, 0.25, 2, tile_dir)
+        excluded = tile_base_to_path(1.25, 1.25, 2, tile_dir)
+        boundary = tile_base_to_path(0.75, 1.25, 2, tile_dir)
+        for geometry in (
+            {"type": "Polygon", "coordinates": [outer, hole]},
+            {"type": "MultiPolygon", "coordinates": [[outer, hole]]},
+        ):
+            with self.subTest(type=geometry["type"]):
+                resolver = TileResolver(tile_dir)
+                resolver.normalized_tile_paths = [inside, excluded, boundary]
+                polygons = valhalla_build_extract._polygons_from_geojson_geometry(geometry)
+                valhalla_build_extract._intersect_tiles_with_polygons(resolver, polygons)
+                self.assertEqual(resolver.matched_paths, [inside, boundary])
 
 
 if __name__ == '__main__':
