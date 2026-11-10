@@ -160,6 +160,40 @@ TEST(GridTraversal, EnterFromRightAndTop) {
   }
 }
 
+TEST(GridTraversal, TouchCornerWithoutEntering) {
+  meili::GridTraversal<midgard::Point2> grid(0, 0, 0.25, 0.25, 4, 4);
+  const std::vector<std::pair<midgard::Point2, midgard::Point2>> segments = {
+      {{0, 1}, {-1, -1}},
+      {{1, 0}, {-1, -1}},
+      {{2, 1}, {0, -1}},
+      {{1, 2}, {-1, 0}},
+  };
+  for (const auto& segment : segments) {
+    EXPECT_TRUE(grid.Traverse(segment.first, segment.second).empty());
+    EXPECT_TRUE(grid.Traverse(segment.second, segment.first).empty());
+  }
+}
+
+TEST(GridTraversal, EnterOnGridLine) {
+  meili::GridTraversal<midgard::Point2> grid(0, 0, 0.25, 0.25, 4, 4);
+  const std::vector<std::pair<midgard::Point2, midgard::Point2>> segments = {
+      {{0.25, 1}, {-1, -1}},
+      {{1, 0.25}, {-1, -1}},
+      {{0.5, 1.375}, {-0.5, -0.125}},
+      {{1.375, 0.5}, {-0.125, -0.5}},
+  };
+  const std::vector<std::vector<std::pair<int, int>>> expected = {{{0, 3}, {0, 2}},
+                                                                  {{3, 0}, {2, 0}},
+                                                                  {{0, 3}, {0, 2}},
+                                                                  {{3, 0}, {2, 0}}};
+  for (size_t i = 0; i < segments.size(); ++i) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(grid.Traverse(segments[i].first, segments[i].second), expected[i]);
+    EXPECT_EQ(grid.Traverse(segments[i].second, segments[i].first),
+              (std::vector<std::pair<int, int>>(expected[i].rbegin(), expected[i].rend())));
+  }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
