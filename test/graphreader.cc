@@ -356,6 +356,61 @@ TEST(CacheLruHard, Creation) {
   TileCacheLRU big_cache(1073741824, TileCacheLRU::MemoryLimitControl::HARD);
 }
 
+TEST(CacheLruHard, EvictUsingCacheWeight) {
+  TileCacheLRU cache(2000, TileCacheLRU::MemoryLimitControl::HARD);
+  const GraphId id1(100, 2, 0);
+  const GraphId id2(101, 2, 0);
+
+  cache.Put(id1, graph_tile_ptr{new TestGraphTile(id1, 50000)}, 1024);
+  cache.Put(id2, graph_tile_ptr{new TestGraphTile(id2, 60000)}, 1024);
+
+  EXPECT_FALSE(cache.Contains(id1));
+  EXPECT_TRUE(cache.Contains(id2));
+  EXPECT_FALSE(cache.OverCommitted());
+}
+
+TEST(CacheLruSoft, TrimUsingCacheWeight) {
+  TileCacheLRU cache(2000, TileCacheLRU::MemoryLimitControl::SOFT);
+  const GraphId id1(100, 2, 0);
+  const GraphId id2(101, 2, 0);
+
+  cache.Put(id1, graph_tile_ptr{new TestGraphTile(id1, 50000)}, 1024);
+  cache.Put(id2, graph_tile_ptr{new TestGraphTile(id2, 60000)}, 1024);
+  ASSERT_TRUE(cache.OverCommitted());
+  cache.Trim();
+
+  EXPECT_FALSE(cache.Contains(id1));
+  EXPECT_TRUE(cache.Contains(id2));
+  EXPECT_FALSE(cache.OverCommitted());
+}
+
+TEST(CacheLru, ReplaceUsingCacheWeight) {
+  for (const auto control :
+       {TileCacheLRU::MemoryLimitControl::HARD, TileCacheLRU::MemoryLimitControl::SOFT}) {
+    TileCacheLRU cache(2000, control);
+    const GraphId id1(100, 2, 0);
+    const GraphId id2(101, 2, 0);
+
+    cache.Put(id1, graph_tile_ptr{new TestGraphTile(id1, 50000)}, 1024);
+    auto replacement = graph_tile_ptr{new TestGraphTile(id1, 60000)};
+    EXPECT_EQ(cache.Put(id1, replacement, 512), replacement);
+    EXPECT_FALSE(cache.OverCommitted());
+
+    cache.Put(id2, graph_tile_ptr{new TestGraphTile(id2, 70000)}, 1488);
+    cache.Trim();
+    EXPECT_EQ(cache.Get(id1), replacement);
+    EXPECT_TRUE(cache.Contains(id2));
+    EXPECT_FALSE(cache.OverCommitted());
+
+    auto larger = graph_tile_ptr{new TestGraphTile(id1, 80000)};
+    EXPECT_EQ(cache.Put(id1, larger, 1024), larger);
+    cache.Trim();
+    EXPECT_EQ(cache.Get(id1), larger);
+    EXPECT_FALSE(cache.Contains(id2));
+    EXPECT_FALSE(cache.OverCommitted());
+  }
+}
+
 TEST(CacheLruHard, InsertSingleItemBiggerThanCacheSize) {
   TileCacheLRU cache(1023, TileCacheLRU::MemoryLimitControl::HARD);
 

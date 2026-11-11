@@ -312,10 +312,12 @@ public:
 
 protected:
   struct KeyValue {
-    KeyValue(GraphId id_, graph_tile_ptr tile_) : id(id_), tile(std::move(tile_)) {
+    KeyValue(GraphId id_, graph_tile_ptr tile_, size_t size_)
+        : id(id_), tile(std::move(tile_)), size(size_) {
     }
     GraphId id;
     graph_tile_ptr tile;
+    size_t size;
   };
   using KeyValueIter = std::list<KeyValue>::iterator;
 
