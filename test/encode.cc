@@ -661,6 +661,8 @@ TEST(Encode, Int7_Signed) {
 }
 
 TEST(Encode, Int7_SmallerTypes) {
+  test_int7_roundtrip<uint8_t>({0, 1, UINT8_MAX, 42}, "uint8_t");
+  test_int7_roundtrip<int8_t>({INT8_MIN, -1, 0, 1, INT8_MAX}, "int8_t");
   test_int7_roundtrip<uint32_t>({0, 1, UINT32_MAX, 42}, "uint32_t");
   test_int7_roundtrip<int32_t>({INT32_MIN, -1, 0, 1, INT32_MAX}, "int32_t");
   test_int7_roundtrip<uint16_t>({0, 1, UINT16_MAX, 42}, "uint16_t");
@@ -685,6 +687,20 @@ TEST(Encode, DecodeMaximumVarint) {
   const container_t expected{{0, INT32_MIN}};
   EXPECT_EQ(decode<container_t>(std::string(6, '~') + "B?", 1.0), expected);
   EXPECT_EQ(decode7<container_t>(std::string(4, '\xff') + '\x0f' + '\0', 1.0), expected);
+}
+
+TEST(Encode, CoordinateAccumulationWraparound) {
+  const container_t expected{{0, INT32_MAX}, {0, INT32_MIN}, {0, INT32_MAX}};
+  EXPECT_EQ(decode<container_t>(std::string("}~~~~~B?A?@?"), 1.0), expected);
+  const std::string encoded{char(0xfe), char(0xff), char(0xff), char(0xff), char(0x0f),
+                            '\0',       char(0x02), '\0',       char(0x01), '\0'};
+  EXPECT_EQ(decode7<container_t>(encoded, 1.0), expected);
+}
+
+TEST(Encode, SevenDigitDateLine) {
+  const container_t points{{179.9, 0}, {-179.9, 0}, {179.9, 0}};
+  assert_approx_equal(decode<container_t>(encode(points, 10000000), 1e-7), points);
+  assert_approx_equal(decode7<container_t>(encode7(points, 10000000), 1e-7), points);
 }
 
 template <typename T> void test_invalid_int7() {
