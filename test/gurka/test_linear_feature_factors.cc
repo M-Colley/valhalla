@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <format>
 #include <string_view>
 
@@ -648,6 +649,87 @@ TEST_F(LinearFeatureTest, partial_edges_near_nodes) {
                          1.);
   check_cost_factor_edge(costing_options.cost_factor_edges(), "C", "D", reader, map.nodes, 10., 0.,
                          end);
+}
+
+TEST_F(LinearFeatureTest, EdgeLimit) {
+  constexpr std::string_view json_request = R"(
+  {{
+    "locations": [
+      {{"lon": {:.6f}, "lat": {:.6f}}},
+      {{"lon": {:.6f}, "lat": {:.6f}}}
+    ],
+    "linear_cost_factors": [{{"shape": "{}", "factor": 2.0}}],
+    "costing": "auto"
+  }}
+  )";
+
+  const std::vector<std::pair<std::vector<std::string>, size_t>> cases = {{{"V", "W"}, 1},
+                                                                          {{"V", "W", "X"}, 2},
+                                                                          {{"A", "B"}, 2}};
+  for (const auto& [nodes, edge_count] : cases) {
+    for (auto limit : {edge_count - 1, edge_count}) {
+      auto config = map.config;
+      config.put("service_limits.max_linear_cost_edges", limit);
+      loki::loki_worker_t loki_worker(config);
+      auto json_str = std::format(json_request, map.nodes.at("U").lng(), map.nodes.at("U").lat(),
+                                  map.nodes.at("X").lng(), map.nodes.at("X").lat(),
+                                  encode_shape(nodes, map.nodes));
+      Api request;
+      ParseApi(json_str, Options::route, request);
+
+      if (limit == edge_count) {
+        EXPECT_NO_THROW(loki_worker.route(request));
+        const auto& edges =
+            request.options().costings().at(Costing::auto_).options().cost_factor_edges();
+        EXPECT_EQ(edges.size(), edge_count);
+      } else {
+        try {
+          loki_worker.route(request);
+          FAIL() << "Expected the linear edge limit to be enforced";
+        } catch (const valhalla_exception_t& e) { EXPECT_EQ(e.code, 234); }
+      }
+      loki_worker.cleanup();
+    }
+  }
+}
+
+TEST_F(LinearFeatureTest, ShortcutAllowTypes) {
+  loki::loki_worker_t loki_worker(map.config);
+  baldr::GraphReader reader(map.config.get_child("mjolnir"));
+  const auto shortcut = std::get<0>(get_shortcut(reader, map.nodes, "B", "C"));
+  ASSERT_TRUE(shortcut.is_valid());
+
+  constexpr std::string_view json_request = R"(
+  {{
+    "locations": [
+      {{"lon": {:.6f}, "lat": {:.6f}}},
+      {{"lon": {:.6f}, "lat": {:.6f}}}
+    ],
+    "linear_cost_factors": [{{"shape": "{}", "factor": {}, "allow_types": ["all"]}}],
+    "costing": "auto"
+  }}
+  )";
+
+  for (double factor : {1.0, 2.0}) {
+    auto json_str = std::format(json_request, map.nodes.at("U").lng(), map.nodes.at("U").lat(),
+                                map.nodes.at("X").lng(), map.nodes.at("X").lat(),
+                                encode_shape({"B", "C"}, map.nodes), factor);
+    Api request;
+    ParseApi(json_str, Options::route, request);
+    loki_worker.route(request);
+    loki_worker.cleanup();
+
+    const auto& costing_options = request.options().costings().at(Costing::auto_);
+    const auto& edges = costing_options.options().cost_factor_edges();
+    auto edge = std::find_if(edges.begin(), edges.end(),
+                             [shortcut](const auto& edge) { return edge.id() == shortcut; });
+    ASSERT_NE(edge, edges.end());
+    EXPECT_DOUBLE_EQ(edge->factor(), factor);
+    EXPECT_EQ(edge->allow_types(), baldr::kAllowAll);
+    auto costing = sif::CreateAutoCost(costing_options);
+    EXPECT_FALSE(costing->IsUserAvoidEdge(shortcut));
+    EXPECT_TRUE(costing->AllowedLinearFeature(shortcut));
+  }
 }
 
 TEST_F(LinearFeatureTest, empty_shape) {
