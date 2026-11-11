@@ -65,7 +65,7 @@ public:
 
 protected:
   // Random number generation: 0 <= r < 1
-  std::mt19937_64 random_generator_;
+  std::mt19937_64 random_generator_{std::random_device{}()};
   std::uniform_real_distribution<float> uniform_distribution_{0.0, 1.0};
 
   uint32_t ntry_;                   // # of attempts (for debugging)
