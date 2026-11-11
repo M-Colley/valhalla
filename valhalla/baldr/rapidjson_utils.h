@@ -16,8 +16,10 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include <cmath>
 #include <fstream>
 #include <istream>
+#include <limits>
 #include <locale>
 #include <stdexcept>
 #include <string>
@@ -104,7 +106,21 @@ get_optional(V&& v, const char* source) {
     return static_cast<T>(ptr->GetUint64());
   }
   if (ptr->IsDouble()) {
-    return static_cast<T>(ptr->GetDouble());
+    const double value = ptr->GetDouble();
+    if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
+      const double truncated = std::trunc(value);
+      // The exclusive power-of-two bound stays exact even when T's maximum does not.
+      const double upper_bound = std::ldexp(1.0, std::numeric_limits<T>::digits);
+      if (!(truncated >= static_cast<double>(std::numeric_limits<T>::lowest()) &&
+            truncated < upper_bound)) {
+        return boost::none;
+      }
+    } else if constexpr (std::is_floating_point_v<T>) {
+      if (!(value >= std::numeric_limits<T>::lowest() && value <= std::numeric_limits<T>::max())) {
+        return boost::none;
+      }
+    }
+    return static_cast<T>(value);
   }
   // give up
   return boost::none;
