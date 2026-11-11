@@ -63,8 +63,16 @@ public:
   // forbid copying
   EdgeStatus(const EdgeStatus&) = delete;
   EdgeStatus& operator=(const EdgeStatus&) = delete;
-  EdgeStatus(EdgeStatus&&) = default;
-  EdgeStatus& operator=(EdgeStatus&&) = default;
+  EdgeStatus(EdgeStatus&& other) noexcept {
+    edgestatus_.swap(other.edgestatus_);
+  }
+  EdgeStatus& operator=(EdgeStatus&& other) noexcept {
+    if (this != &other) {
+      clear();
+      edgestatus_.swap(other.edgestatus_);
+    }
+    return *this;
+  }
 
   /**
    * Destructor. Delete any allocated EdgeStatusInfo arrays.
