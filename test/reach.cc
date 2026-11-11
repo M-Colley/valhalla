@@ -20,7 +20,12 @@ const auto conf = test::make_config("test/data/utrecht_tiles");
 
 class TestReach : public Reach {
 public:
+  using Reach::enqueue;
   using Reach::exact;
+
+  size_t queued_reach() const {
+    return queue_.size() - transitions_;
+  }
 };
 
 GraphId begin_node(GraphReader& reader, const DirectedEdge* edge) {
@@ -113,6 +118,21 @@ TEST(Reach, transition_misscount) {
 
   // check its reach
   TestReach reach_checker;
+  const auto node_id = std::get<1>(edge)->endnode();
+  const auto tile = reader.GetGraphTile(node_id);
+  const auto transitions = tile->GetNodeTransitions(node_id);
+  ASSERT_FALSE(transitions.empty());
+  reach_checker.enqueue(node_id, reader, costing, tile);
+  EXPECT_EQ(reach_checker.queued_reach(), 1);
+  for (int i = 0; i < 2; ++i) {
+    reach_checker.enqueue(node_id, reader, costing, tile);
+    EXPECT_EQ(reach_checker.queued_reach(), 1);
+  }
+  for (const auto& transition : transitions) {
+    reach_checker.enqueue(transition.endnode(), reader, costing, tile);
+    EXPECT_EQ(reach_checker.queued_reach(), 1);
+  }
+
   auto reach = reach_checker(std::get<1>(edge), std::get<0>(edge), 50, reader, costing);
 
   // all edges should have the same in/outbound reach
