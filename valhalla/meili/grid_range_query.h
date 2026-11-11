@@ -88,6 +88,10 @@ public:
 
   // Query all items that intersects with the range
   std::unordered_set<item_t> Query(const midgard::AABB2<coord_t>& range) const {
+    if (!bbox_.Intersects(range)) {
+      return {};
+    }
+
     int mincol, minrow, maxcol, maxrow;
     std::tie(mincol, minrow) = grid_.SquareAtPoint(range.minpt());
     std::tie(maxcol, maxrow) = grid_.SquareAtPoint(range.maxpt());
