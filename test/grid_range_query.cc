@@ -13,6 +13,19 @@ using namespace valhalla;
 using BoundingBox = midgard::AABB2<midgard::PointLL>;
 using LineSegment = midgard::LineSegment2<midgard::PointLL>;
 
+TEST(GridRangeQuery, QueryOutsideBounds) {
+  meili::GridRangeQuery<int, midgard::PointLL> grid(BoundingBox(0, 0, 10, 10), 1.f, 1.f);
+  grid.AddLineSegment(0, LineSegment({0.25, 0.25}, {0.75, 0.75}));
+  grid.AddLineSegment(1, LineSegment({9.25, 9.25}, {9.75, 9.75}));
+
+  EXPECT_TRUE(grid.Query(BoundingBox(-10, -10, -1, -1)).empty());
+  EXPECT_TRUE(grid.Query(BoundingBox(11, 11, 12, 12)).empty());
+  EXPECT_TRUE(grid.Query(BoundingBox(-2, 0, -1, 1)).empty());
+  EXPECT_TRUE(grid.Query(BoundingBox(9, 11, 10, 12)).empty());
+  EXPECT_EQ(grid.Query(BoundingBox(-1, -1, 0.5, 0.5)), (std::unordered_set<int>{0}));
+  EXPECT_EQ(grid.Query(BoundingBox(9.5, 9.5, 11, 11)), (std::unordered_set<int>{1}));
+}
+
 TEST(GridRangeQuery, TestAddLineSegment) {
   BoundingBox bbox(0, 0, 100, 100);
   meili::GridRangeQuery<int, midgard::PointLL> grid(bbox, 1.f, 1.f);
