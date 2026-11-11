@@ -7,6 +7,7 @@
 #include "midgard/util.h"
 
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -28,7 +29,9 @@ inline void check_level(const uint32_t level) {
 }
 
 inline void check_coord(const double minx, const double miny, const double maxx, const double maxy) {
-  if (minx < -180. || maxx > 180. || miny < -90. || maxy > 90.) {
+  if (!std::isfinite(minx) || !std::isfinite(miny) || !std::isfinite(maxx) || !std::isfinite(maxy) ||
+      minx < -180. || minx > 180. || maxx < -180. || maxx > 180. || miny < -90. || miny > 90. ||
+      maxy < -90. || maxy > 90.) {
     throw std::invalid_argument("Invalid coordinate, remember it's (lon, lat)");
   }
 }
@@ -49,6 +52,9 @@ inline std::vector<vb::GraphId> get_tile_ids_from_ring(std::vector<vm::PointLL> 
                                                        std::vector<uint32_t> levels) {
   if (ring.size() < 3) {
     throw std::invalid_argument("Ring must have at least 3 coordinates");
+  }
+  for (const auto& point : ring) {
+    check_coord(point.lng(), point.lat(), point.lng(), point.lat());
   }
 
   if (levels.empty()) {
@@ -99,6 +105,9 @@ inline std::vector<vb::GraphId> get_tile_ids_from_ring(std::vector<vm::PointLL> 
 
     // find tiles intersecting (crossing) the ring
     auto intersected = tiles.Intersect(ring);
+    if (intersected.empty()) {
+      continue;
+    }
     std::vector<int32_t> boundary_tiles;
     boundary_tiles.reserve(intersected.size());
     result.reserve(result.size() + intersected.size());

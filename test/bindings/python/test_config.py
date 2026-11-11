@@ -4,7 +4,8 @@ import json
 import os
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from unittest.mock import Mock, patch
 
 from valhalla.config import get_config, parse_and_validate_config
 from valhalla.valhalla_build_config import Optional
@@ -197,6 +198,29 @@ class TestParseAndValidateConfig(unittest.TestCase):
         with self.assertRaises(AttributeError) as exc:
             parse_and_validate_config(config)
         self.assertIn("mjolnir.tile_extract and mjolnir.tile_dir are missing", str(exc.exception))
+
+    def test_invalid_dict_does_not_leave_temporary_files(self):
+        with TemporaryDirectory() as tmp, patch("valhalla.config.tempfile.tempdir", tmp):
+            for config, error in (
+                ({}, AttributeError),
+                ({"mjolnir": {"tile_dir": str(Path(tmp) / "missing")}}, FileNotFoundError),
+                ({"mjolnir": {"tile_dir": tmp}, "invalid": object()}, TypeError),
+            ):
+                with self.subTest(error=error), self.assertRaises(error):
+                    parse_and_validate_config(config)
+                self.assertEqual(list(Path(tmp).glob("valhalla_config_*.json")), [])
+
+    def test_failed_config_write_removes_temporary_file(self):
+        def fail_write(*args, **kwargs):
+            file = NamedTemporaryFile(*args, **kwargs)
+            file.write = Mock(side_effect=OSError("write failed"))
+            return file
+
+        with TemporaryDirectory() as tmp, patch("valhalla.config.tempfile.tempdir", tmp):
+            with patch("valhalla.config.tempfile.NamedTemporaryFile", side_effect=fail_write):
+                with self.assertRaisesRegex(OSError, "write failed"):
+                    parse_and_validate_config({"mjolnir": {"tile_dir": tmp}})
+            self.assertEqual(list(Path(tmp).glob("valhalla_config_*.json")), [])
 
 
 class TestGetConfig(unittest.TestCase):

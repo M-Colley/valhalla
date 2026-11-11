@@ -5,6 +5,8 @@ import json
 import pickle
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from valhalla.baldr import GraphId, GraphTileHeader
 from valhalla.baldr.utils import (
@@ -271,6 +273,13 @@ class TestBindings(unittest.TestCase):
             # Edge might not exist, but GraphUtils should be initialized
             pass
 
+    def test_graphutils_dict_config_file_is_removed(self):
+        with TemporaryDirectory() as tmp, patch("valhalla.config.tempfile.tempdir", tmp):
+            graph = GraphUtils({"mjolnir": {"tile_dir": str(self.tiles_path)}})
+            self.assertEqual(list(Path(tmp).glob("valhalla_config_*.json")), [])
+            tile_gid = get_tile_id_from_lon_lat(self.level, (self.utrecht_lon, self.utrecht_lat))
+            self.assertIsInstance(graph.get_graph_tile_header(tile_gid), GraphTileHeader)
+
     def test_graphutils_path_config(self):
         """Test GraphUtils initialization with Path object."""
         # Use path relative to this test file
@@ -480,3 +489,31 @@ class TestBindings(unittest.TestCase):
         with self.assertRaises(ValueError) as exc:
             get_tile_ids_from_ring([(0, 0), (0, 91), (1, 91)])
         self.assertIn("Invalid coordinate", str(exc.exception))
+
+    def test_get_tile_ids_from_ring_at_world_boundary(self):
+        for ring in (
+            [(0, 90), (1, 90), (2, 90)],
+            [(180, 0), (180, 1), (180, 2)],
+        ):
+            with self.subTest(ring=ring):
+                self.assertEqual(get_tile_ids_from_ring(ring, [1]), [])
+
+    def test_nonfinite_tile_coordinates(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    get_tile_id_from_lon_lat(1, (value, 0))
+                with self.assertRaises(ValueError):
+                    get_tile_ids_from_bbox(0, 0, 1, value, [1])
+                with self.assertRaises(ValueError):
+                    get_tile_ids_from_ring([(0, 0), (1, 0), (value, 1)], [1])
+
+    def test_get_tile_ids_from_bbox_out_of_bounds(self):
+        for bounds in (
+            (200, 0, 100, 1),
+            (-100, 0, -200, 1),
+            (0, 100, 1, 80),
+            (0, -80, 1, -100),
+        ):
+            with self.subTest(bounds=bounds), self.assertRaises(ValueError):
+                get_tile_ids_from_bbox(*bounds, [1])
