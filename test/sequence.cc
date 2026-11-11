@@ -5,6 +5,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -224,6 +226,90 @@ TEST(Sequence, Iterator) {
   --i;
   EXPECT_EQ(i.position(), 0) << "Pre-decrement operator wasn't right";
 }
+
+TEST(MemMap, MoveConstruction) {
+  const std::string path = VALHALLA_BUILD_DIR "test/data/mem_map_move.bin";
+  std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+  {
+    mem_map<int> source;
+    source.create(path, 2);
+    source.get()[0] = 42;
+    {
+      mem_map<int> moved(std::move(source));
+      EXPECT_FALSE(source);
+      EXPECT_EQ(source.size(), 0);
+      source.unmap();
+      EXPECT_EQ(moved.size(), 2);
+      EXPECT_EQ(moved.get()[0], 42);
+    }
+  }
+  std::filesystem::remove(path);
+}
+
+TEST(MemMap, MoveAssignment) {
+  const std::string source_path = VALHALLA_BUILD_DIR "test/data/mem_map_source.bin";
+  const std::string target_path = VALHALLA_BUILD_DIR "test/data/mem_map_target.bin";
+  std::filesystem::create_directories(std::filesystem::path(source_path).parent_path());
+  {
+    mem_map<int> source;
+    source.create(source_path, 2);
+    source.get()[0] = 42;
+    mem_map<int> target;
+    target.create(target_path, 1);
+    target.get()[0] = 99;
+    target = std::move(source);
+    EXPECT_FALSE(source);
+    EXPECT_EQ(source.size(), 0);
+    source.unmap();
+    EXPECT_EQ(target.size(), 2);
+    EXPECT_EQ(target.get()[0], 42);
+    auto& same_target = target;
+    target = std::move(same_target);
+    EXPECT_EQ(target.size(), 2);
+    EXPECT_EQ(target.get()[0], 42);
+    EXPECT_TRUE(std::filesystem::remove(target_path));
+  }
+  std::filesystem::remove(source_path);
+}
+
+TEST(MemMap, FailedMappingCanRecover) {
+  const std::string empty_path = VALHALLA_BUILD_DIR "test/data/mem_map_empty.bin";
+  const std::string path = VALHALLA_BUILD_DIR "test/data/mem_map_recovery.bin";
+  std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+  std::ofstream(empty_path, std::ios::binary | std::ios::trunc).close();
+  {
+    mem_map<int> mapping;
+    EXPECT_THROW(mapping.map(empty_path, std::numeric_limits<size_t>::max() / sizeof(int)),
+                 std::runtime_error);
+    EXPECT_FALSE(mapping);
+    EXPECT_EQ(mapping.size(), 0);
+    mapping.create(path, 1);
+    mapping.get()[0] = 42;
+    EXPECT_EQ(mapping.get()[0], 42);
+  }
+  std::filesystem::remove(empty_path);
+  std::filesystem::remove(path);
+}
+
+#ifdef _WIN32
+TEST(MemMap, PartialMapping) {
+  const std::string path = VALHALLA_BUILD_DIR "test/data/mem_map_partial.bin";
+  std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+  SYSTEM_INFO system_info;
+  GetSystemInfo(&system_info);
+  {
+    mem_map<char> file;
+    file.create(path, 16 * system_info.dwPageSize);
+  }
+  {
+    mem_map<char> partial(path, 1);
+    MEMORY_BASIC_INFORMATION region{};
+    ASSERT_NE(VirtualQuery(partial.get(), &region, sizeof(region)), 0);
+    EXPECT_EQ(region.RegionSize, system_info.dwPageSize);
+  }
+  std::filesystem::remove(path);
+}
+#endif
 
 } // namespace
 
