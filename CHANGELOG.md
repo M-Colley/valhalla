@@ -1,6 +1,20 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: transfer memory-map ownership on moves, recover from failed mappings, and honor partial mapping lengths on Windows
+   * FIXED: bound tar field and payload reads, and reject entry sizes that exceed the address space
+   * FIXED: round negative elevation samples correctly and handle empty profiles and zero-length edges
+   * FIXED: define wrapping arithmetic for integer and polyline delta encoding without changing serialized bytes
+   * FIXED: check the final polyline segment for self-intersections and handle short inputs
+   * FIXED: honor the optimizer seed when creating the initial tour
+   * FIXED: release existing edge-status arrays during move assignment
+   * FIXED: honor requested reachability expansion directions
+   * FIXED: return no items for grid range queries wholly outside the indexed bounds
+   * FIXED: validate every tile coordinate and handle polygon rings at world boundaries
+   * FIXED: clean up temporary Python configuration files after validation and construction failures
+   * FIXED: publish elevation downloads atomically so interrupted downloads do not poison the cache
+   * FIXED: validate tile cache keys and preserve cache accounting on duplicate insertions and allocation failures
+   * FIXED: validate local and remote tile extract indexes and avoid repeating HTTP requests during response checks
    * FIXED: isolate nested defaults between Python `get_config()` calls
    * FIXED: avoid repeated tar member scans and duplicate tile index entries when copying extracts
    * FIXED: preserve GeoJSON polygon holes when selecting routing and elevation tiles
@@ -27,6 +41,7 @@
    * FIXED: `service=driveway`, `parking_aisle` and `drive-through` are now destination only for trucks too, like they already were for cars [#6446](https://github.com/valhalla/valhalla/pull/6446)
    * FIXED: duplicate definition of `OverwriteBits` [#6478](https://github.com/valhalla/valhalla/pull/6478)
 * **Enhancement**
+   * CHANGED: avoid scanning bucket contents when decreasing a label cost within the same queue bucket
    * CHANGED: avoid one heap allocation per optimizer annealing attempt
    * ADDED: more surface types [#6337](https://github.com/valhalla/valhalla/pull/6337)
    * ADDED: `steps_factor` bicycle costing option and `exclude_steps` location search filter [#6394](https://github.com/valhalla/valhalla/pull/6394)
