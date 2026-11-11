@@ -152,8 +152,12 @@ public:
 
 protected:
   inline uint32_t get_offset(const GraphId& graphid) const {
-    return graphid.level() < 4 ? index_offsets_[graphid.level()] + graphid.tileid()
-                               : cache_indices_.size();
+    const auto level = graphid.level();
+    if (level >= 4)
+      return cache_indices_.size();
+    const auto offset = index_offsets_[level] + graphid.tileid();
+    const auto end = level < 3 ? index_offsets_[level + 1] : cache_indices_.size();
+    return offset < end ? offset : cache_indices_.size();
   }
   inline uint32_t get_index(const GraphId& graphid) const {
     auto offset = get_offset(graphid);

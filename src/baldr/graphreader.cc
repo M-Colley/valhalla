@@ -54,18 +54,27 @@ size_t load_tiles(valhalla::midgard::tar& tar,
   return tar.for_each([&](const std::string& name, const char* data, size_t size) {
     // if it's our specially named index.bin file - load all entries from it
     if (name == "index.bin") {
+      if (size % sizeof(tile_index_entry) != 0)
+        throw std::runtime_error("Invalid tile extract index size");
       auto entries =
           std::span<tile_index_entry>(reinterpret_cast<tile_index_entry*>(const_cast<char*>(data)),
                                       size / sizeof(tile_index_entry));
       tiles.clear(); // just in case if somehow index.bin is not the first one
       tiles.reserve(entries.size());
       for (const auto& entry : entries) {
+        if (entry.size == 0 || entry.offset > tar.mm.size() ||
+            entry.size > tar.mm.size() - entry.offset) {
+          throw std::runtime_error("Tile extract index entry is outside the archive");
+        }
         tiles.emplace(std::piecewise_construct, std::forward_as_tuple(entry.tile_id),
                       std::forward_as_tuple(const_cast<char*>(tar.mm.get() + entry.offset),
                                             entry.size));
       }
       return false; // index loaded, stop scanning
     }
+
+    if (size == 0)
+      return true;
 
     try {
       auto id = valhalla::baldr::GraphId::FromTilePath(name);
@@ -122,6 +131,8 @@ GraphReader::tile_extract_t::tile_extract_t(const boost::property_tree::ptree& p
         }
       }
     } catch (const std::exception& e) {
+      tiles.clear();
+      archive.reset();
       LOG_ERROR(e.what());
       LOG_WARN("Tile extract could not be loaded");
     }
@@ -146,6 +157,8 @@ GraphReader::tile_extract_t::tile_extract_t(const boost::property_tree::ptree& p
         }
       }
     } catch (const std::exception& e) {
+      traffic_tiles.clear();
+      traffic_archive.reset();
       LOG_WARN(e.what());
       LOG_WARN("Traffic tile extract could not be loaded");
     }
@@ -156,21 +169,29 @@ void GraphReader::load_remote_tar_offsets() {
   // get the tar header of the first file so we know with which range to download index.bin
   auto first_file_resp =
       CURL_OR_THROW(tile_getter_->get(tile_url_, 0, sizeof(tar::header_t)), tile_url_);
+  if (first_file_resp.bytes_.size() != sizeof(tar::header_t)) {
+    throw std::runtime_error("Invalid remote tar header size at " + tile_url_);
+  }
   auto first_file_header = reinterpret_cast<tar::header_t*>(first_file_resp.bytes_.data());
 
   // verify the first file is indeed the index.bin
-  auto first_file_name = std::string_view(first_file_header->name);
   if (!first_file_header->verify()) {
     throw std::runtime_error("The first file's tar header is not valid at " + tile_url_);
-  } else if (first_file_name != "index.bin") {
+  } else if (first_file_header->get_file_name() != "index.bin") {
     throw std::runtime_error("The first file in the remote tar needs to be 'index.bin' at " +
                              tile_url_);
   }
 
   // fetch the index.bin and read its content into remote_tar_offsets
-  auto index_bin_response = CURL_OR_THROW(tile_getter_->get(tile_url_, sizeof(tar::header_t),
-                                                            first_file_header->get_file_size()),
-                                          tile_url_);
+  const auto index_size = first_file_header->get_file_size();
+  if (index_size == 0 || index_size % sizeof(tile_index_entry) != 0) {
+    throw std::runtime_error("Invalid remote tar index size at " + tile_url_);
+  }
+  auto index_bin_response =
+      CURL_OR_THROW(tile_getter_->get(tile_url_, sizeof(tar::header_t), index_size), tile_url_);
+  if (index_bin_response.bytes_.size() != index_size) {
+    throw std::runtime_error("Incomplete remote tar index at " + tile_url_);
+  }
   const auto index_bin_size = index_bin_response.bytes_.size() / sizeof(tile_index_entry);
 
   remote_tar_offsets_.reserve(index_bin_size);
@@ -178,6 +199,9 @@ void GraphReader::load_remote_tar_offsets() {
       std::span(reinterpret_cast<tile_index_entry*>(index_bin_response.bytes_.data()),
                 index_bin_size);
   for (const auto& entry : entries) {
+    if (entry.size == 0 || entry.offset > std::numeric_limits<uint64_t>::max() - entry.size) {
+      throw std::runtime_error("Invalid remote tar index entry at " + tile_url_);
+    }
     remote_tar_offsets_.insert({GraphId{entry.tile_id}, {entry.offset, entry.size}});
   }
   if (remote_tar_offsets_.size() == 0) {
@@ -235,10 +259,10 @@ graph_tile_ptr FlatTileCache::Get(const GraphId& graphid) const {
 
 // Puts a copy of a tile of into the cache.
 graph_tile_ptr FlatTileCache::Put(const GraphId& graphid, graph_tile_ptr tile, size_t size) {
-  // TODO: protect against crazy tileid?
-  cache_size_ += size;
-  cache_indices_[get_offset(graphid)] = cache_.size();
+  auto& index = cache_indices_.at(get_offset(graphid));
   cache_.emplace_back(std::move(tile));
+  index = cache_.size() - 1;
+  cache_size_ += size;
   return cache_.back();
 }
 
@@ -286,8 +310,10 @@ graph_tile_ptr SimpleTileCache::Get(const GraphId& graphid) const {
 
 // Puts a copy of a tile of into the cache.
 graph_tile_ptr SimpleTileCache::Put(const GraphId& graphid, graph_tile_ptr tile, size_t size) {
-  cache_size_ += size;
-  return cache_.emplace(graphid, std::move(tile)).first->second;
+  auto [entry, inserted] = cache_.try_emplace(graphid, std::move(tile));
+  if (inserted)
+    cache_size_ += size;
+  return entry->second;
 }
 
 void SimpleTileCache::Trim() {

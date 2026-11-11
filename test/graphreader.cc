@@ -2,6 +2,7 @@
 #include "baldr/connectivity_map.h"
 #include "baldr/tilehierarchy.h"
 #include "loki/worker.h"
+#include "midgard/sequence.h"
 #include "test.h"
 #include "thor/worker.h"
 
@@ -10,8 +11,11 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 using namespace valhalla::baldr;
 
@@ -58,6 +62,213 @@ boost::property_tree::ptree tile_url_config() {
   boost::property_tree::ptree pt;
   pt.put("tile_url", "http://tiles.invalid/{tilePath}");
   return pt;
+}
+
+class scripted_tar_getter_t : public tile_getter_t {
+public:
+  explicit scripted_tar_getter_t(std::vector<bytes_t> responses) : responses_(std::move(responses)) {
+  }
+
+  GET_response_t get(const std::string&, uint64_t begin, uint64_t) override {
+    GET_response_t response;
+    response.status_ = status_code_t::SUCCESS;
+    response.http_code_ = 206;
+    ++requests;
+    response.bytes_ = responses_.at(begin == 0 ? 0 : 1);
+    return response;
+  }
+
+  HEAD_response_t head(const std::string&, header_mask_t) override {
+    return {};
+  }
+
+  size_t requests = 0;
+
+private:
+  std::vector<bytes_t> responses_;
+};
+
+tile_getter_t::bytes_t tar_file_header(size_t size, const std::string& name = "index.bin") {
+  valhalla::midgard::tar::header_t header{};
+  std::memcpy(header.name, name.data(), std::min(name.size(), sizeof(header.name)));
+  char size_field[24];
+  std::snprintf(size_field, sizeof(size_field), "%011llo", static_cast<unsigned long long>(size));
+  std::memcpy(header.size, size_field, sizeof(header.size));
+  std::memset(header.chksum, ' ', sizeof(header.chksum));
+  unsigned checksum = 0;
+  const auto* bytes = reinterpret_cast<const unsigned char*>(&header);
+  for (size_t i = 0; i < sizeof(header); ++i)
+    checksum += bytes[i];
+  char checksum_field[12];
+  std::snprintf(checksum_field, sizeof(checksum_field), "%06o", checksum);
+  std::memcpy(header.chksum, checksum_field, 6);
+  header.chksum[6] = '\0';
+  header.chksum[7] = ' ';
+  const auto* data = reinterpret_cast<const char*>(&header);
+  return {data, data + sizeof(header)};
+}
+
+tile_getter_t::bytes_t tar_index_entry() {
+  tile_getter_t::bytes_t result(16);
+  const uint64_t offset = 1536;
+  const uint32_t tile_id = GraphId(746, 2, 0);
+  const uint32_t size = sizeof(GraphTileHeader);
+  std::memcpy(result.data(), &offset, sizeof(offset));
+  std::memcpy(result.data() + 8, &tile_id, sizeof(tile_id));
+  std::memcpy(result.data() + 12, &size, sizeof(size));
+  return result;
+}
+
+TEST(TileUrl, RejectsTruncatedTarHeader) {
+  auto config = tile_url_config();
+  config.put("tile_url", "http://tiles.invalid/tiles.tar");
+  for (const auto size : {size_t{0}, sizeof(valhalla::midgard::tar::header_t) - 1}) {
+    auto getter = std::make_unique<scripted_tar_getter_t>(
+        std::vector<tile_getter_t::bytes_t>{tile_getter_t::bytes_t(size)});
+    EXPECT_THROW(GraphReader(config, std::move(getter)), std::runtime_error);
+  }
+}
+
+TEST(TileUrl, RejectsIncompleteTarIndex) {
+  auto config = tile_url_config();
+  config.put("tile_url", "http://tiles.invalid/tiles.tar");
+  auto getter = std::make_unique<scripted_tar_getter_t>(
+      std::vector<tile_getter_t::bytes_t>{tar_file_header(32), tar_index_entry()});
+  EXPECT_THROW(GraphReader(config, std::move(getter)), std::runtime_error);
+}
+
+TEST(TileUrl, RejectsPartialTarIndexEntry) {
+  auto config = tile_url_config();
+  config.put("tile_url", "http://tiles.invalid/tiles.tar");
+  auto index = tar_index_entry();
+  index.push_back('\0');
+  auto getter = std::make_unique<scripted_tar_getter_t>(
+      std::vector<tile_getter_t::bytes_t>{tar_file_header(index.size()), index});
+  EXPECT_THROW(GraphReader(config, std::move(getter)), std::runtime_error);
+}
+
+TEST(TileUrl, AcceptsExactTarIndex) {
+  auto config = tile_url_config();
+  config.put("tile_url", "http://tiles.invalid/tiles.tar");
+  auto getter = std::make_unique<scripted_tar_getter_t>(
+      std::vector<tile_getter_t::bytes_t>{tar_file_header(16), tar_index_entry()});
+  const auto* requests = getter.get();
+  GraphReader reader(config, std::move(getter));
+  EXPECT_EQ(requests->requests, 2);
+}
+
+TEST(TileUrl, RejectsInvalidRemoteTarEntry) {
+  auto config = tile_url_config();
+  config.put("tile_url", "http://tiles.invalid/tiles.tar");
+  const std::vector<std::pair<uint64_t, uint32_t>> positions = {{0, 0},
+                                                                {std::numeric_limits<uint64_t>::max(),
+                                                                 16}};
+  for (const auto& [offset, size] : positions) {
+    auto index = tar_index_entry();
+    std::memcpy(index.data(), &offset, sizeof(offset));
+    std::memcpy(index.data() + 12, &size, sizeof(size));
+    auto getter = std::make_unique<scripted_tar_getter_t>(
+        std::vector<tile_getter_t::bytes_t>{tar_file_header(index.size()), index});
+    EXPECT_THROW(GraphReader(config, std::move(getter)), std::runtime_error);
+  }
+}
+
+TEST(TileUrl, HttpResponseIsEvaluatedOnce) {
+  size_t requests = 0;
+  auto request = [&requests](tile_getter_t::status_code_t status) {
+    ++requests;
+    tile_getter_t::GET_response_t response;
+    response.status_ = status;
+    response.http_code_ = status == tile_getter_t::status_code_t::SUCCESS ? 200 : 503;
+    return response;
+  };
+  EXPECT_THROW(CURL_OR_THROW(request(tile_getter_t::status_code_t::FAILURE), "http://tiles.invalid"),
+               std::runtime_error);
+  EXPECT_EQ(requests, 1);
+  requests = 0;
+  const auto response =
+      CURL_OR_THROW(request(tile_getter_t::status_code_t::SUCCESS), "http://tiles.invalid");
+  EXPECT_EQ(response.http_code_, 200);
+  EXPECT_EQ(requests, 1);
+}
+
+struct extract_graph_reader_t : GraphReader {
+  using GraphReader::GraphReader;
+
+  std::pair<size_t, bool> extract_state(bool traffic) const {
+    return traffic ? std::make_pair(tile_extract_->traffic_tiles.size(),
+                                    static_cast<bool>(tile_extract_->traffic_archive))
+                   : std::make_pair(tile_extract_->tiles.size(),
+                                    static_cast<bool>(tile_extract_->archive));
+  }
+};
+
+std::pair<size_t, bool> load_indexed_extract(const tile_getter_t::bytes_t& index, bool traffic) {
+  const std::string path = "test/data/invalid_tile_index.tar";
+  std::filesystem::create_directories("test/data");
+  std::vector<char> archive(2048);
+  const auto header = tar_file_header(index.size());
+  std::memcpy(archive.data(), header.data(), header.size());
+  std::memcpy(archive.data() + header.size(), index.data(), index.size());
+  {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file.write(archive.data(), archive.size());
+  }
+  std::pair<size_t, bool> result;
+  {
+    boost::property_tree::ptree config;
+    config.put(traffic ? "traffic_extract" : "tile_extract", path);
+    extract_graph_reader_t reader(config);
+    result = reader.extract_state(traffic);
+  }
+  std::filesystem::remove(path);
+  return result;
+}
+
+TEST(TileExtract, RejectsIndexEntriesOutsideArchive) {
+  const std::vector<std::pair<uint64_t, uint32_t>> positions =
+      {{2048, 1}, {2047, 2}, {std::numeric_limits<uint64_t>::max(), 16}, {0, 0}};
+  for (bool traffic : {false, true}) {
+    for (const auto& [offset, size] : positions) {
+      auto index = tar_index_entry();
+      std::memcpy(index.data(), &offset, sizeof(offset));
+      std::memcpy(index.data() + 12, &size, sizeof(size));
+      auto entries = tar_index_entry();
+      entries.insert(entries.end(), index.begin(), index.end());
+      EXPECT_EQ(load_indexed_extract(entries, traffic), (std::pair<size_t, bool>{0, false}));
+    }
+  }
+}
+
+TEST(TileExtract, RejectsPartialIndexEntry) {
+  auto index = tar_index_entry();
+  index.push_back('\0');
+  for (bool traffic : {false, true})
+    EXPECT_EQ(load_indexed_extract(index, traffic), (std::pair<size_t, bool>{0, false}));
+}
+
+TEST(TileExtract, AcceptsIndexEntryInsideArchive) {
+  for (bool traffic : {false, true}) {
+    EXPECT_EQ(load_indexed_extract(tar_index_entry(), traffic), (std::pair<size_t, bool>{1, true}));
+  }
+}
+
+TEST(TileExtract, IgnoresEmptyTileWithoutIndex) {
+  const std::string path = "test/data/empty_tile_extract.tar";
+  std::filesystem::create_directories("test/data");
+  const auto header = tar_file_header(0, "2/000/000/746.gph");
+  {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file.write(header.data(), header.size());
+  }
+  {
+    boost::property_tree::ptree config;
+    config.put("tile_extract", path);
+    config.put("data_processing.scan_tar", true);
+    extract_graph_reader_t reader(config);
+    EXPECT_EQ(reader.extract_state(false), (std::pair<size_t, bool>{0, false}));
+  }
+  std::filesystem::remove(path);
 }
 
 TEST(TileUrl, FailureIsNotRequestedAgain) {
@@ -248,6 +459,47 @@ CheckGraphTile(const graph_tile_ptr& tile, const GraphId& expected_id, size_t ex
   ASSERT_NE(tile, nullptr);
   EXPECT_EQ(tile->header()->graphid().value, expected_id.value);
   EXPECT_EQ(tile->header()->end_offset(), expected_size);
+}
+
+TEST(SimpleCache, DuplicateInsertionDoesNotGrowCache) {
+  SimpleTileCache cache(123);
+  const GraphId id(100, 2, 0);
+  const auto first = cache.Put(id, graph_tile_ptr{new TestGraphTile(id, 123)}, 123);
+  const auto duplicate = cache.Put(id, graph_tile_ptr{new TestGraphTile(id, 456)}, 456);
+
+  EXPECT_EQ(duplicate, first);
+  EXPECT_EQ(cache.Get(id), first);
+  EXPECT_FALSE(cache.OverCommitted());
+}
+
+TEST(FlatCache, InvalidTileIdsDoNotAliasOtherLevels) {
+  FlatTileCache cache(1000);
+  for (uint8_t level = 0; level < 3; ++level) {
+    const GraphId valid_id(0, level + 1, 0);
+    cache.Put(valid_id, graph_tile_ptr{new TestGraphTile(valid_id, 123)}, 123);
+    const GraphId invalid_id(TileHierarchy::get_tiling(level).TileCount(), level, 0);
+
+    EXPECT_FALSE(cache.Contains(invalid_id));
+    EXPECT_EQ(cache.Get(invalid_id), nullptr);
+  }
+}
+
+TEST(FlatCache, InvalidIdsCannotBeInserted) {
+  FlatTileCache cache(123);
+  const std::vector<GraphId> invalid_ids = {{},
+                                            {0, 4, 0},
+                                            {TileHierarchy::levels()[0].tiles.TileCount(), 0, 0},
+                                            {TileHierarchy::GetTransitLevel().tiles.TileCount(), 3,
+                                             0}};
+  for (const auto& id : invalid_ids) {
+    EXPECT_THROW(cache.Put(id, graph_tile_ptr{new TestGraphTile(id, 123)}, 123), std::out_of_range);
+    EXPECT_FALSE(cache.Contains(id));
+    EXPECT_EQ(cache.Get(id), nullptr);
+    EXPECT_FALSE(cache.OverCommitted());
+  }
+  const GraphId valid_id(0, 2, 0);
+  cache.Put(valid_id, graph_tile_ptr{new TestGraphTile(valid_id, 123)}, 123);
+  EXPECT_FALSE(cache.OverCommitted());
 }
 
 TEST(SimpleCache, Clear) {
