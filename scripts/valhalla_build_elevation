@@ -17,6 +17,7 @@ from time import sleep
 from typing import List, Iterable, Set
 from urllib import request
 from urllib.error import URLError, HTTPError
+from uuid import uuid4
 
 # hack so ArgumentParser can accept negative numbers
 # see https://github.com/valhalla/valhalla/issues/3426
@@ -260,12 +261,18 @@ def download(tile: Tile, output_dir, compression: TileCompression) -> bool:
 
     download_status = DownloadStatus.FAILED
     for i in range(5):
+        temporary_path = None
         try:
             LOGGER.debug(f"Downloading tile {tile.dir}/{tile.name} for the {i}th time.")
 
             # tries up to 24 mins with exponentially increasing sleeps in between, starting with 5 seconds
             sleep((i**2) / 2 * 30)
-            with request.urlopen(url) as res, open(filepath, "wb") as f:
+            download_path = dest_directory / f"{uuid4().hex}.tmp"
+            with (
+                request.urlopen(url) as res,
+                download_path.open("xb") as f,
+            ):
+                temporary_path = download_path
                 if compression is TileCompression.GZIP:
                     f.write(res.read())
                 else:
@@ -296,6 +303,7 @@ def download(tile: Tile, output_dir, compression: TileCompression) -> bool:
                                 f.write(compressor.compress(uncompressed))
                                 f.write(compressor.flush())
 
+            temporary_path.replace(filepath)
             download_status = DownloadStatus.OK
             LOGGER.debug(f"Successfully downloaded tile {tile.dir}/{tile.name}")
             break
@@ -312,10 +320,12 @@ def download(tile: Tile, output_dir, compression: TileCompression) -> bool:
                 "Could not import lz4. Please install lz4 or use another compression format."
             )
             sys.exit(1)
+        finally:
+            if temporary_path:
+                temporary_path.unlink(missing_ok=True)
 
     if download_status == DownloadStatus.CORRUPTED:
-        LOGGER.error(f"Tile {tile.dir}/{tile.name} was corrupted, removing it...")
-        filepath.unlink()
+        LOGGER.error(f"Tile {tile.dir}/{tile.name} was corrupted...")
         return False
     elif download_status == DownloadStatus.FAILED:
         LOGGER.error(f"Tile {tile.dir}/{tile.name} couldn't be downloaded...")
