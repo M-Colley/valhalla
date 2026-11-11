@@ -42,6 +42,26 @@ TEST(Polyline2, TestGeneralizeAndLength) {
   TryGeneralizeAndLength(pl, 100.0f, 79.0569f);
 }
 
+TEST(Polyline2, SelfIntersectionOnLastSegment) {
+  Polyline2<Point2> polyline({{0, 0}, {2, 2}, {0, 2}, {2, 0}});
+  const auto intersections = polyline.GetSelfIntersections();
+  ASSERT_EQ(intersections.size(), 1);
+  EXPECT_EQ(intersections.front(), Point2(1, 1));
+}
+
+TEST(Polyline2, SelfIntersectionSmallInputs) {
+  for (const auto& points :
+       {std::vector<Point2>{}, {{0, 0}}, {{0, 0}, {1, 1}}, {{0, 0}, {1, 1}, {2, 0}}}) {
+    Polyline2<Point2> polyline(points);
+    EXPECT_TRUE(polyline.GetSelfIntersections().empty());
+  }
+}
+
+TEST(Polyline2, ClosedRingHasNoSelfIntersectionAtClosure) {
+  Polyline2<Point2> polyline({{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}});
+  EXPECT_TRUE(polyline.GetSelfIntersections().empty());
+}
+
 TEST(Polyline2, TestGeneralizeAndLengthWithDoubles) {
   std::vector<Point2d> pts = {Point2d(25.0, 25.0), Point2d(50.0, 50.0), Point2d(25.0, 75.0),
                               Point2d(50.0, 100.0)};

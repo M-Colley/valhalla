@@ -54,10 +54,13 @@ template <typename coord_t> std::vector<coord_t> Polyline2<coord_t>::GetSelfInte
   std::vector<coord_t> intersections;
   coord_t intersection_point;
   std::vector<coord_t>& points = pts_;
-  for (size_t i = 1; i < points.size() - 2; i++) {
+  for (size_t i = 1; i + 2 < points.size(); i++) {
     const coord_t& ia(points[i - 1]);
     const coord_t& ib(points[i]);
-    for (size_t j = i + 2; j < points.size() - 1; j++) {
+    for (size_t j = i + 2; j < points.size(); j++) {
+      if (i == 1 && j == points.size() - 1 && points.front() == points.back()) {
+        continue;
+      }
       const coord_t& ja(points[j - 1]);
       const coord_t& jb(points[j]);
       LineSegment2<coord_t> segmenti(ia, ib);
