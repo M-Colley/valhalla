@@ -3,6 +3,7 @@
 #include "midgard/encoded.h"
 #include "midgard/util.h"
 #include "mjolnir/edgeinfobuilder.h"
+#include "odin/enhancedtrippath.h"
 
 #include <boost/shared_array.hpp>
 #include <gtest/gtest.h>
@@ -10,7 +11,9 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 using namespace valhalla::baldr;
@@ -212,6 +215,54 @@ TEST(EdgeInfo, TaggedValueSize_OSMNodeIds) {
 
   EXPECT_EQ(size, tagged_value.size()) << "OSMNodeIds TaggedValueSize should match actual size";
   EXPECT_GT(size, 1) << "OSMNodeIds should have size > 1";
+}
+
+std::string EncodedLevels(int32_t precision, std::initializer_list<int32_t> values) {
+  std::string payload = encode7int(std::vector<int32_t>{precision});
+  for (const auto value : values)
+    payload += encode7int(std::vector<int32_t>{value});
+  return encode7int(std::vector<int32_t>{static_cast<int32_t>(payload.size())}) + payload;
+}
+
+TEST(EdgeInfo, DecodeLevelPrecision) {
+  for (const auto& [precision, scaled, expected] : {std::tuple<int32_t, int32_t, float>{0, 2, 2.0f},
+                                                    {1, 15, 1.5f},
+                                                    {2, 125, 1.25f},
+                                                    {3, 1125, 1.125f}}) {
+    const auto [levels, digits] = decode_levels(EncodedLevels(precision, {scaled}));
+    ASSERT_EQ(levels.size(), 1);
+    EXPECT_FLOAT_EQ(levels[0].first, expected);
+    EXPECT_FLOAT_EQ(levels[0].second, expected);
+    EXPECT_EQ(digits, precision);
+  }
+}
+
+TEST(EdgeInfo, DecodeLevelRangesWithPrecision) {
+  const auto [levels, precision] =
+      decode_levels(EncodedLevels(2, {-275, -125, static_cast<int32_t>(kLevelRangeSeparator), 150}));
+  ASSERT_EQ(levels.size(), 2);
+  EXPECT_EQ(precision, 2);
+  EXPECT_FLOAT_EQ(levels[0].first, -2.75f);
+  EXPECT_FLOAT_EQ(levels[0].second, -1.25f);
+  EXPECT_FLOAT_EQ(levels[1].first, 1.5f);
+  EXPECT_FLOAT_EQ(levels[1].second, 1.5f);
+}
+
+TEST(EdgeInfo, LevelReferenceUsesDecimalPrecision) {
+  for (const auto& [precision, scaled, expected] :
+       {std::tuple<int32_t, int32_t, const char*>{0, 2, "Level 2"},
+        {1, 15, "Level 1.5"},
+        {2, 125, "Level 1.25"},
+        {3, 1125, "Level 1.125"}}) {
+    valhalla::TripLeg_Edge edge;
+    auto* tag = edge.add_tagged_value();
+    tag->set_type(valhalla::TaggedValue_Type_kLevels);
+    tag->set_value(EncodedLevels(precision, {scaled}));
+    valhalla::odin::EnhancedTripLeg_Edge enhanced(&edge);
+    const auto references = enhanced.GetLevelRef();
+    ASSERT_EQ(references.size(), 1);
+    EXPECT_EQ(references.front(), expected);
+  }
 }
 
 TEST(EdgeInfo, TaggedValueSize_Levels) {

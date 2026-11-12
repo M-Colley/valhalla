@@ -71,6 +71,7 @@ namespace baldr {
 
 std::pair<std::vector<std::pair<float, float>>, uint32_t> decode_levels(const std::string& encoded) {
   uint32_t precision = 0;
+  double scale = 1.0;
   std::vector<std::pair<float, float>> decoded;
   decoded.reserve(4);
 
@@ -81,8 +82,10 @@ std::pair<std::vector<std::pair<float, float>>, uint32_t> decode_levels(const st
   // we keep track of where the string ends
   auto end = ptr + size;
   // second varint is the precision
-  if (int32_t prec_power = parse_varint(ptr) > 0)
-    precision = pow(10, prec_power);
+  if (int32_t prec_power = parse_varint(ptr); prec_power > 0) {
+    precision = prec_power;
+    scale = pow(10, prec_power);
+  }
 
   // keep track of whether we're looking at the first or second value
   // of a contiguous block
@@ -94,8 +97,7 @@ std::pair<std::vector<std::pair<float, float>>, uint32_t> decode_levels(const st
       prev = false;
       continue;
     }
-    float f = precision == 0 ? static_cast<float>(val)
-                             : static_cast<float>(val) / static_cast<float>(precision);
+    float f = static_cast<float>(val / scale);
     if (!prev) {
       // first value
       // (temporarily) set to the same value to indicate a single number
@@ -107,7 +109,7 @@ std::pair<std::vector<std::pair<float, float>>, uint32_t> decode_levels(const st
     }
   }
 
-  return {decoded, static_cast<uint32_t>(precision)};
+  return {decoded, precision};
 }
 
 size_t EdgeInfo::TaggedValueSize(const char* ptr) {
