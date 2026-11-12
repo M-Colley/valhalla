@@ -8,7 +8,9 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace valhalla;
@@ -1681,6 +1683,138 @@ protected:
 
 ///////////////////////////////////////////////////////////////////////////////
 // test by key methods
+TEST(ParseRequest, DurationsRequireShape) {
+  for (const std::string& input :
+       {R"({"costing":"auto","durations":[]})", R"({"costing":"auto","durations":[1]})",
+        R"({"costing":"auto","shape":[],"durations":[]})",
+        R"({"costing":"auto","trace":[],"durations":[]})"}) {
+    Api request;
+    try {
+      ParseApi(input, Options::trace_route, request);
+      FAIL() << "Expected durations without trace points to be rejected";
+    } catch (const valhalla_exception_t& error) { EXPECT_EQ(error.code, 136); }
+  }
+}
+
+TEST(ParseRequest, DurationsPreserveTimestampBehavior) {
+  Api request;
+  ParseApi(R"({"costing":"auto","shape":[{"lat":1,"lon":1}],"durations":[],"begin_time":100})",
+           Options::trace_route, request);
+  ASSERT_EQ(request.options().shape_size(), 1);
+  EXPECT_DOUBLE_EQ(request.options().shape(0).time(), 100);
+
+  ParseApi(R"({"costing":"auto","shape":[{"lat":1,"lon":1},{"lat":2,"lon":2}],
+               "durations":[2.5],"begin_time":10})",
+           Options::trace_route, request);
+  ASSERT_EQ(request.options().shape_size(), 2);
+  EXPECT_DOUBLE_EQ(request.options().shape(0).time(), 10);
+  EXPECT_DOUBLE_EQ(request.options().shape(1).time(), 12.5);
+
+  EXPECT_NO_THROW(ParseApi(R"({"costing":"auto"})", Options::trace_route, request));
+  EXPECT_EQ(request.options().shape_size(), 0);
+}
+
+TEST(ParseRequest, DurationsRejectMismatchedCounts) {
+  for (const std::string& durations : {"[]", "[1,2]"}) {
+    Api request;
+    const std::string input =
+        R"({"costing":"auto","shape":[{"lat":1,"lon":1},{"lat":2,"lon":2}],"durations":)" +
+        durations + "}";
+    try {
+      ParseApi(input, Options::trace_route, request);
+      FAIL() << "Expected duration count mismatch to be rejected";
+    } catch (const valhalla_exception_t& error) { EXPECT_EQ(error.code, 136); }
+  }
+}
+
+TEST(ParseRequest, RejectNonFiniteJsonCoordinates) {
+  for (const std::string& node : {"locations", "shape"}) {
+    for (const std::string& coordinate : {R"({"lat":"nan","lon":1})", R"({"lat":1,"lon":"nan"})",
+                                          R"({"lat":1,"lon":"inf"})", R"({"lat":1,"lon":"-inf"})"}) {
+      Api request;
+      const std::string input = R"({"costing":"auto",")" + node + "\":[" + coordinate + "]}";
+      try {
+        ParseApi(input, Options::trace_route, request);
+        FAIL() << "Expected nonfinite coordinates to be rejected";
+      } catch (const valhalla_exception_t& error) {
+        EXPECT_EQ(error.code, node == "shape" ? 134 : 130);
+      }
+    }
+  }
+}
+
+TEST(ParseRequest, RejectNonFiniteProtobufCoordinates) {
+  const auto infinity = std::numeric_limits<double>::infinity();
+  const auto nan = std::numeric_limits<double>::quiet_NaN();
+  for (const bool shape : {false, true}) {
+    for (const auto& coordinate :
+         {std::pair{nan, 0.0}, std::pair{infinity, 0.0}, std::pair{-infinity, 0.0},
+          std::pair{0.0, nan}, std::pair{0.0, infinity}, std::pair{0.0, -infinity}}) {
+      Api request;
+      auto* options = request.mutable_options();
+      options->set_costing_type(Costing::auto_);
+      auto* location = shape ? options->add_shape() : options->add_locations();
+      location->mutable_ll()->set_lat(coordinate.first);
+      location->mutable_ll()->set_lng(coordinate.second);
+      try {
+        ParseApi("", Options::trace_route, request);
+        FAIL() << "Expected nonfinite coordinates to be rejected";
+      } catch (const valhalla_exception_t& error) { EXPECT_EQ(error.code, shape ? 134 : 130); }
+    }
+  }
+}
+
+TEST(ParseRequest, FiniteCoordinateCoercionAndWrapping) {
+  Api request;
+  ParseApi(R"({"costing":"auto","locations":[{"lat":"12.5","lon":"450",
+              "display_lat":"3","display_lon":"450"}]})",
+           Options::trace_route, request);
+  ASSERT_EQ(request.options().locations_size(), 1);
+  EXPECT_DOUBLE_EQ(request.options().locations(0).ll().lat(), 12.5);
+  EXPECT_DOUBLE_EQ(request.options().locations(0).ll().lng(), 90);
+  EXPECT_DOUBLE_EQ(request.options().locations(0).display_ll().lat(), 3);
+  EXPECT_DOUBLE_EQ(request.options().locations(0).display_ll().lng(), 90);
+
+  request.Clear();
+  auto* options = request.mutable_options();
+  options->set_costing_type(Costing::auto_);
+  auto* location = options->add_locations();
+  location->mutable_ll()->set_lat(-90);
+  location->mutable_ll()->set_lng(450);
+  location->mutable_display_ll()->set_lat(3);
+  location->mutable_display_ll()->set_lng(450);
+  EXPECT_NO_THROW(ParseApi("", Options::trace_route, request));
+  EXPECT_DOUBLE_EQ(request.options().locations(0).ll().lat(), -90);
+  EXPECT_DOUBLE_EQ(request.options().locations(0).ll().lng(), 90);
+  EXPECT_DOUBLE_EQ(request.options().locations(0).display_ll().lat(), 3);
+  EXPECT_DOUBLE_EQ(request.options().locations(0).display_ll().lng(), 90);
+}
+
+TEST(ParseRequest, ClearNonFiniteDisplayCoordinates) {
+  for (const std::string& longitude : {"nan", "inf", "-inf"}) {
+    Api request;
+    const std::string input =
+        R"({"costing":"auto","locations":[{"lat":1,"lon":2,"display_lat":3,"display_lon":")" +
+        longitude + R"("}]})";
+    EXPECT_NO_THROW(ParseApi(input, Options::trace_route, request));
+    EXPECT_FALSE(request.options().locations(0).has_display_ll());
+  }
+  for (const double longitude :
+       {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity()}) {
+    Api request;
+    auto* options = request.mutable_options();
+    options->set_costing_type(Costing::auto_);
+    auto* location = options->add_locations();
+    location->mutable_ll()->set_lat(1);
+    location->mutable_ll()->set_lng(2);
+    location->mutable_display_ll()->set_lat(3);
+    location->mutable_display_ll()->set_lng(longitude);
+    EXPECT_NO_THROW(ParseApi("", Options::trace_route, request));
+    EXPECT_FALSE(request.options().locations(0).has_display_ll());
+  }
+}
+
 TEST(ParseRequest, test_polygons) {
   test_polygons_parsing(true);
   test_polygons_parsing(false);
