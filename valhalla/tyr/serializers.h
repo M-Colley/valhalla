@@ -145,20 +145,19 @@ void geojson_shape(const std::vector<midgard::PointLL>& shape, rapidjson::writer
 inline void update_bridge_elevations(std::vector<float>& elevation,
                                      std::vector<std::pair<uint32_t, uint32_t>>& bridges) {
   for (const auto& bridge : bridges) {
-    // Validate elevation indexes. Get elevation before and after the bridge/tunnel and
-    // form delta elevation for linear interpolation.
-    int32_t n = bridge.second - bridge.first;
-    if (n > 0 && bridge.first < elevation.size() && bridge.second < elevation.size()) {
-      float start_elevation = bridge.first > 0 ? elevation[bridge.first - 1] : elevation[0];
-      float end_elevation =
-          bridge.second < elevation.size() - 1 ? elevation[bridge.second + 1] : elevation.back();
-      float delta = (end_elevation - start_elevation) / n;
-      float elev = start_elevation + delta;
-      for (uint32_t i = bridge.first; i <= bridge.second; ++i) {
-        elevation[i] = elev;
-        elev += delta;
-      }
-    }
+    if (bridge.first > bridge.second || bridge.second >= elevation.size())
+      continue;
+
+    const size_t first = bridge.first > 0 ? bridge.first - 1 : bridge.first;
+    const size_t last =
+        bridge.second < elevation.size() - 1 ? static_cast<size_t>(bridge.second) + 1 : bridge.second;
+    if (first == last)
+      continue;
+
+    const float start_elevation = elevation[first];
+    const float delta = (elevation[last] - start_elevation) / static_cast<float>(last - first);
+    for (size_t i = first + 1; i < last; ++i)
+      elevation[i] = start_elevation + delta * static_cast<float>(i - first);
   }
 }
 
