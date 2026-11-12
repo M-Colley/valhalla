@@ -1,4 +1,5 @@
 #include "odin/maneuversbuilder.h"
+#include "baldr/turnlanes.h"
 #include "midgard/util.h"
 #include "odin/maneuver.h"
 #include "proto/options.pb.h"
@@ -6,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -40,6 +42,10 @@ public:
     ManeuversBuilder::ProcessRoundabouts(maneuvers);
   }
 
+  void ProcessTurnLanes(std::list<Maneuver>& maneuvers) {
+    ManeuversBuilder::ProcessTurnLanes(maneuvers);
+  }
+
   void CountAndSortSigns(std::list<Maneuver>& maneuvers) {
     ManeuversBuilder::CountAndSortSigns(maneuvers);
   }
@@ -70,6 +76,95 @@ public:
     return trip_path_;
   }
 };
+
+TEST(Maneuversbuilder, ProcessTurnLanesAtDestination) {
+  TripLeg path;
+  auto* edge = path.add_node()->mutable_edge();
+  edge->set_length_km(0.1f);
+  edge->add_turn_lanes()->set_directions_mask(valhalla::baldr::kTurnLaneThrough);
+  edge->add_turn_lanes()->set_directions_mask(valhalla::baldr::kTurnLaneThrough);
+  path.add_node();
+  EnhancedTripLeg etp(path);
+  Options options;
+  ManeuversBuilderTest builder(options, &etp);
+  std::list<Maneuver> maneuvers(2);
+  auto& start = maneuvers.front();
+  start.set_type(DirectionsLeg_Maneuver_Type_kStart);
+  start.set_end_node_index(1);
+  auto& destination = maneuvers.back();
+  destination.set_type(DirectionsLeg_Maneuver_Type_kDestination);
+  destination.set_begin_node_index(1);
+  destination.set_end_node_index(1);
+
+  builder.ProcessTurnLanes(maneuvers);
+
+  for (const auto& lane : edge->turn_lanes())
+    EXPECT_EQ(lane.state(), TurnLane::kInvalid);
+}
+
+TEST(Maneuversbuilder, ProcessTurnLanesOnFinalStep) {
+  for (const bool drive_on_left : {false, true}) {
+    TripLeg path;
+    for (int i = 0; i < 3; ++i) {
+      auto* edge = path.add_node()->mutable_edge();
+      edge->set_length_km(0.1f);
+      edge->set_drive_on_left(drive_on_left);
+      edge->add_turn_lanes()->set_directions_mask(valhalla::baldr::kTurnLaneThrough);
+      edge->add_turn_lanes()->set_directions_mask(valhalla::baldr::kTurnLaneThrough);
+    }
+    path.add_node();
+    EnhancedTripLeg etp(path);
+    Options options;
+    ManeuversBuilderTest builder(options, &etp);
+    std::list<Maneuver> maneuvers(2);
+    auto& start = maneuvers.front();
+    start.set_type(DirectionsLeg_Maneuver_Type_kStart);
+    start.set_end_node_index(3);
+    auto& destination = maneuvers.back();
+    destination.set_type(DirectionsLeg_Maneuver_Type_kDestination);
+    destination.set_begin_node_index(3);
+    destination.set_end_node_index(3);
+
+    builder.ProcessTurnLanes(maneuvers);
+
+    for (int i = 0; i < 2; ++i) {
+      const auto& edge = path.node(i).edge();
+      EXPECT_EQ(edge.turn_lanes(drive_on_left ? 0 : 1).state(), TurnLane::kActive);
+      EXPECT_EQ(edge.turn_lanes(drive_on_left ? 1 : 0).state(), TurnLane::kValid);
+    }
+  }
+}
+
+TEST(Maneuversbuilder, ProcessTurnLanesBeforeDestination) {
+  TripLeg path;
+  auto* edge = path.add_node()->mutable_edge();
+  edge->set_length_km(0.1f);
+  edge->add_turn_lanes()->set_directions_mask(valhalla::baldr::kTurnLaneRight);
+  edge->add_turn_lanes()->set_directions_mask(valhalla::baldr::kTurnLaneRight);
+  path.add_node()->mutable_edge()->set_length_km(0.1f);
+  path.add_node();
+  EnhancedTripLeg etp(path);
+  Options options;
+  ManeuversBuilderTest builder(options, &etp);
+  std::list<Maneuver> maneuvers(3);
+  auto start = maneuvers.begin();
+  start->set_type(DirectionsLeg_Maneuver_Type_kStart);
+  start->set_end_node_index(1);
+  auto turn = std::next(start);
+  turn->set_type(DirectionsLeg_Maneuver_Type_kRight);
+  turn->set_begin_node_index(1);
+  turn->set_end_node_index(2);
+  turn->set_length(0.1f);
+  auto& destination = maneuvers.back();
+  destination.set_type(DirectionsLeg_Maneuver_Type_kDestination);
+  destination.set_begin_node_index(2);
+  destination.set_end_node_index(2);
+
+  builder.ProcessTurnLanes(maneuvers);
+
+  EXPECT_EQ(edge->turn_lanes(0).state(), TurnLane::kValid);
+  EXPECT_EQ(edge->turn_lanes(1).state(), TurnLane::kActive);
+}
 
 void TrySetSimpleDirectionalManeuverType(uint32_t turn_degree, DirectionsLeg_Maneuver_Type expected) {
   Options options;
