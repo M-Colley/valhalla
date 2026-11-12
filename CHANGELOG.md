@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: preserve graph tile ownership during cross-tile node, opposing-edge, and shortcut lookups
    * FIXED: serialize nonfinite object and array values as null instead of malformed JSON
    * FIXED: account for charged LRU tile weights and roll back failed cache insertions
    * FIXED: reject JSON numeric conversions outside the requested type's range
