@@ -86,6 +86,39 @@ TEST(JSON, FloatBounds) {
   }
 }
 
+template <typename T> void CheckNonFiniteSerialization() {
+  for (const auto value : {std::numeric_limits<T>::quiet_NaN(), std::numeric_limits<T>::infinity(),
+                           -std::numeric_limits<T>::infinity()}) {
+    rapidjson::writer_wrapper_t array;
+    array.start_array();
+    array(value);
+    array(4.25);
+    array.end_array();
+    rapidjson::Document parsed;
+    parsed.Parse(array.get_buffer());
+    ASSERT_FALSE(parsed.HasParseError()) << array.get_buffer();
+    ASSERT_TRUE(parsed.IsArray());
+    ASSERT_EQ(parsed.Size(), 2);
+    EXPECT_TRUE(parsed[0u].IsNull());
+    EXPECT_DOUBLE_EQ(parsed[1u].GetDouble(), 4.25);
+
+    rapidjson::writer_wrapper_t object;
+    object.start_object();
+    object("value", value);
+    object("finite", 4.25);
+    object.end_object();
+    parsed.Parse(object.get_buffer());
+    ASSERT_FALSE(parsed.HasParseError()) << object.get_buffer();
+    EXPECT_TRUE(parsed["value"].IsNull());
+    EXPECT_DOUBLE_EQ(parsed["finite"].GetDouble(), 4.25);
+  }
+}
+
+TEST(JSON, NonFiniteSerialization) {
+  CheckNonFiniteSerialization<float>();
+  CheckNonFiniteSerialization<double>();
+}
+
 TEST(JSON, Serialize) {
   using namespace std;
   using namespace valhalla::baldr;
