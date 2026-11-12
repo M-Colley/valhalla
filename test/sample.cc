@@ -9,15 +9,80 @@
 #include <lz4frame.h>
 #endif
 
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <limits>
 #include <list>
+#include <thread>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/resource.h>
+#endif
 
 using namespace valhalla;
 using namespace valhalla::midgard;
 
 namespace {
+
+#if GTEST_HAS_DEATH_TEST
+void check_mapping_failure(const std::string& directory, const std::string& path) {
+  skadi::sample s(directory);
+  {
+    std::ofstream file(path, std::ios::binary);
+    file.seekp(3601 * 3601 * 2 - 1);
+    file.put('\0');
+  }
+#ifdef _WIN32
+  auto handle = CreateFileA(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (handle == INVALID_HANDLE_VALUE)
+    std::_Exit(1);
+#else
+  rlimit original{};
+  if (getrlimit(RLIMIT_NOFILE, &original) != 0)
+    std::_Exit(1);
+  auto limited = original;
+  limited.rlim_cur = 0;
+  if (setrlimit(RLIMIT_NOFILE, &limited) != 0)
+    std::_Exit(1);
+#endif
+  bool failed = false;
+  try {
+    s.get(std::make_pair(0.5, 0.5));
+  } catch (const std::runtime_error&) { failed = true; }
+#ifdef _WIN32
+  CloseHandle(handle);
+#else
+  if (setrlimit(RLIMIT_NOFILE, &original) != 0)
+    std::_Exit(1);
+#endif
+  if (!failed)
+    std::_Exit(1);
+  auto retry = std::async(std::launch::async, [&] { return s.get(std::make_pair(0.5, 0.5)); });
+  if (retry.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+    std::_Exit(2);
+  std::_Exit(retry.get() == 0.0 ? 0 : 3);
+}
+
+TEST(SampleDeathTest, RecoverAfterMappingFailure) {
+  const std::string directory = "test/data/sample_mapping_failure";
+  const auto path = directory + "/N00/N00E000.hgt";
+  std::filesystem::create_directories(directory + "/N00");
+  std::filesystem::remove(path);
+
+  // Isolate the resource limit and bound the wait so a leaked cache lock cannot hang the suite.
+  EXPECT_EXIT(check_mapping_failure(directory, path), testing::ExitedWithCode(0), "");
+
+  std::filesystem::remove(path);
+  std::filesystem::remove(directory + "/N00");
+  std::filesystem::remove(directory);
+}
+#endif
 
 TEST(Sample, no_data) {
   // check the no data value
@@ -29,6 +94,20 @@ TEST(Sample, no_data) {
 
   EXPECT_EQ(s.get(std::make_pair(200.0, 200.0)), skadi::get_no_data_value())
       << "Asked for point outside of valid range";
+}
+
+TEST(Sample, InvalidCoordinates) {
+  skadi::sample s("test/data/this_is_not_a_directory");
+  const auto infinity = std::numeric_limits<double>::infinity();
+  const auto nan = std::numeric_limits<double>::quiet_NaN();
+  const std::vector<std::pair<double, double>> coordinates = {{-180.0, 90.0},   {180.0, 0.0},
+                                                              {-180.01, 0.0},   {0.0, -90.01},
+                                                              {0.0, 90.01},     {infinity, 0.0},
+                                                              {0.0, -infinity}, {nan, 0.0},
+                                                              {0.0, nan}};
+  const auto heights = s.get_all(coordinates);
+  for (const auto height : heights)
+    EXPECT_EQ(height, skadi::get_no_data_value());
 }
 
 TEST(Sample, create_tile) {
@@ -118,6 +197,147 @@ TEST(Sample, get) {
 TEST(Sample, getgz) {
   _get("test/data/samplegz");
 };
+
+TEST(Sample, CompressedTileSize) {
+  const std::string directory = "test/data/sample_corrupt";
+  std::filesystem::create_directories(directory);
+  auto check = [&directory](const std::vector<char>& bytes, const std::string& extension) {
+    const auto path = directory + "/N00E000.hgt" + extension;
+    {
+      std::ofstream file(path, std::ios::binary | std::ios::trunc);
+      file.write(bytes.data(), bytes.size());
+      EXPECT_TRUE(file.good());
+    }
+    {
+      skadi::sample s(directory);
+      EXPECT_EQ(s.get(std::make_pair(0.5, 0.5)), skadi::get_no_data_value());
+      EXPECT_EQ(s.get(std::make_pair(0.0, 0.0)), skadi::get_no_data_value());
+    }
+    std::filesystem::remove(path);
+  };
+
+  for (const auto size : {size_t{2}, size_t{3601 * 3601 * 2 - 2}, size_t{3601 * 3601 * 2 + 2}}) {
+    SCOPED_TRACE(size);
+    std::vector<char> tile(size, 0);
+    std::vector<char> compressed(compressBound(tile.size()) + 32);
+    auto src_func = [&tile](z_stream& stream) {
+      stream.next_in = reinterpret_cast<Bytef*>(tile.data());
+      stream.avail_in = tile.size();
+      return Z_FINISH;
+    };
+    auto dst_func = [&compressed](z_stream& stream) {
+      if (stream.total_out == 0) {
+        stream.next_out = reinterpret_cast<Bytef*>(compressed.data());
+        stream.avail_out = compressed.size();
+      } else {
+        compressed.resize(stream.total_out);
+      }
+    };
+    ASSERT_TRUE(baldr::deflate(src_func, dst_func));
+    check(compressed, ".gz");
+
+#ifdef ENABLE_LZ4
+    compressed.resize(LZ4F_compressFrameBound(tile.size(), nullptr));
+    const auto bytes =
+        LZ4F_compressFrame(compressed.data(), compressed.size(), tile.data(), tile.size(), nullptr);
+    ASSERT_FALSE(LZ4F_isError(bytes));
+    compressed.resize(bytes);
+    check(compressed, ".lz4");
+#endif
+  }
+  std::filesystem::remove(directory);
+}
+
+TEST(Sample, ReplaceCorruptCompressedTile) {
+  struct stored_sample : skadi::sample {
+    using skadi::sample::sample;
+    using skadi::sample::store;
+  };
+  const std::string directory = "test/data/sample_replaced";
+  std::filesystem::create_directories(directory);
+  auto compress = [](const std::vector<char>& tile) {
+    std::vector<char> compressed(compressBound(tile.size()));
+    uLongf size = compressed.size();
+    EXPECT_EQ(compress2(reinterpret_cast<Bytef*>(compressed.data()), &size,
+                        reinterpret_cast<const Bytef*>(tile.data()), tile.size(), Z_BEST_SPEED),
+              Z_OK);
+    compressed.resize(size);
+    return compressed;
+  };
+  std::vector<char> tile(3601 * 3601 * 2 - 2, 0);
+  const auto corrupt = compress(tile);
+  {
+    std::ofstream file(directory + "/N00E000.hgt.gz", std::ios::binary | std::ios::trunc);
+    file.write(corrupt.data(), corrupt.size());
+  }
+  {
+    stored_sample s(directory);
+    EXPECT_EQ(s.get(std::make_pair(0.5, 0.5)), skadi::get_no_data_value());
+    tile.resize(3601 * 3601 * 2);
+    for (size_t i = 1; i < tile.size(); i += 2)
+      tile[i] = 100;
+    EXPECT_TRUE(s.store("/replacement/N00E000.hgt.gz", compress(tile)));
+    EXPECT_EQ(s.get(std::make_pair(0.5, 0.5)), 100.0);
+  }
+  std::filesystem::remove(directory + "/N00E000.hgt.gz");
+  std::filesystem::remove(directory + "/replacement/N00E000.hgt.gz");
+  std::filesystem::remove(directory + "/replacement");
+  std::filesystem::remove(directory);
+}
+
+TEST(Sample, PreservePublishedMapping) {
+  struct stored_sample : skadi::sample {
+    using skadi::sample::sample;
+    using skadi::sample::store;
+  };
+  const std::string directory = "test/data/sample_published";
+  std::filesystem::create_directories(directory);
+  std::vector<char> tile(3601 * 3601 * 2, 0);
+  {
+    std::ofstream file(directory + "/N00E000.hgt", std::ios::binary | std::ios::trunc);
+    file.write(tile.data(), tile.size());
+  }
+  {
+    stored_sample s(directory);
+    for (size_t i = 1; i < tile.size(); i += 2)
+      tile[i] = 100;
+    EXPECT_TRUE(s.store("/replacement/N00E000.hgt", tile));
+    EXPECT_EQ(s.get(std::make_pair(0.5, 0.5)), 0.0);
+  }
+  std::filesystem::remove(directory + "/N00E000.hgt");
+  std::filesystem::remove(directory + "/replacement/N00E000.hgt");
+  std::filesystem::remove(directory + "/replacement");
+  std::filesystem::remove(directory);
+}
+
+TEST(Sample, DuplicateTilesAtInitialization) {
+  const std::string directory = "test/data/sample_duplicates";
+  std::filesystem::create_directories(directory + "/first");
+  std::filesystem::create_directories(directory + "/second");
+  std::vector<char> tile(3601 * 3601 * 2, 0);
+  uint16_t value = 0;
+  for (const auto& subdirectory : {"first", "second"}) {
+    value += 100;
+    for (size_t i = 1; i < tile.size(); i += 2)
+      tile[i] = static_cast<char>(value);
+    std::ofstream file(directory + "/" + subdirectory + "/N00E000.hgt", std::ios::binary);
+    file.write(tile.data(), tile.size());
+  }
+  auto expected = 0.0;
+  for (const auto& file : std::filesystem::recursive_directory_iterator(directory)) {
+    if (file.is_regular_file())
+      expected = file.path().parent_path().filename() == "first" ? 100.0 : 200.0;
+  }
+  {
+    skadi::sample s(directory);
+    EXPECT_EQ(s.get(std::make_pair(0.5, 0.5)), expected);
+  }
+  for (const auto& subdirectory : {"first", "second"}) {
+    std::filesystem::remove(directory + "/" + subdirectory + "/N00E000.hgt");
+    std::filesystem::remove(directory + "/" + subdirectory);
+  }
+  std::filesystem::remove(directory);
+}
 
 #ifdef ENABLE_LZ4
 TEST(Sample, getlz4) {
