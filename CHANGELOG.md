@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: publish candidate grid cache entries only after indexing succeeds
    * FIXED: preserve null matrix locations and interpolate bridge elevations between fixed anchors
    * FIXED: keep point interpolation finite for repeated and very short coordinates
    * FIXED: handle empty and sliced string views and portable integer types in JSON writers

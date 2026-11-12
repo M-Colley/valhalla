@@ -1,10 +1,15 @@
 // -*- mode: c++ -*-
 
+#include "meili/candidate_search.h"
 #include "meili/grid_range_query.h"
 #include "midgard/linesegment2.h"
 #include "midgard/pointll.h"
 
+#include <boost/property_tree/ptree.hpp>
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <iterator>
 
 namespace {
 
@@ -12,6 +17,57 @@ using namespace valhalla;
 
 using BoundingBox = midgard::AABB2<midgard::PointLL>;
 using LineSegment = midgard::LineSegment2<midgard::PointLL>;
+
+class BinTestTile : public baldr::GraphTile {
+public:
+  BinTestTile() {
+    header_storage_.set_graphid(baldr::GraphId(0, 2, 0));
+    uint32_t offsets[baldr::kBinCount];
+    std::fill(std::begin(offsets), std::end(offsets), 1);
+    header_storage_.set_edge_bin_offsets(offsets);
+    header_ = &header_storage_;
+    edge_bins_ = &edge_;
+  }
+
+private:
+  baldr::GraphTileHeader header_storage_;
+  baldr::GraphId edge_{1, 2, 0};
+};
+
+class RetryBinReader : public baldr::GraphReader {
+public:
+  RetryBinReader() : GraphReader(boost::property_tree::ptree{}) {
+  }
+
+  baldr::graph_tile_ptr GetGraphTile(const baldr::GraphId& id) override {
+    if (id.tileid() == 0)
+      return tile_;
+    if (++edge_queries == 1)
+      throw std::runtime_error("Temporary edge tile read failure");
+    return nullptr;
+  }
+
+  size_t edge_queries = 0;
+
+private:
+  baldr::graph_tile_ptr tile_{new BinTestTile};
+};
+
+TEST(GridRangeQuery, RetryFailedBinIndex) {
+  RetryBinReader reader;
+  meili::CandidateGridQuery query(reader, 0.01f, 0.01f);
+  const BoundingBox range(-179.999, -89.999, -179.998, -89.998);
+
+  EXPECT_THROW(query.RangeQuery(range), std::runtime_error);
+  EXPECT_EQ(query.size(), 0);
+  EXPECT_EQ(reader.edge_queries, 1);
+
+  EXPECT_TRUE(query.RangeQuery(range).empty());
+  EXPECT_EQ(query.size(), 1);
+  EXPECT_EQ(reader.edge_queries, 2);
+  EXPECT_TRUE(query.RangeQuery(range).empty());
+  EXPECT_EQ(reader.edge_queries, 2);
+}
 
 TEST(GridRangeQuery, QueryOutsideBounds) {
   meili::GridRangeQuery<int, midgard::PointLL> grid(BoundingBox(0, 0, 10, 10), 1.f, 1.f);
