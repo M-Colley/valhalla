@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: serialize nonfinite object and array values as null instead of malformed JSON
    * FIXED: account for charged LRU tile weights and roll back failed cache insertions
    * FIXED: reject JSON numeric conversions outside the requested type's range
    * FIXED: avoid counting queued reachability nodes more than once
