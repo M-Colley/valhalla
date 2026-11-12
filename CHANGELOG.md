@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: escape JSON object keys and control bytes without changing stream formatting
    * FIXED: publish candidate grid cache entries only after indexing succeeds
    * FIXED: preserve null matrix locations and interpolate bridge elevations between fixed anchors
    * FIXED: keep point interpolation finite for repeated and very short coordinates
