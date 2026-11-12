@@ -13,6 +13,7 @@
 #endif
 #include <sys/stat.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -22,6 +23,7 @@
 #include <regex>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace {
 // srtmgl1 holds 1x1 degree tiles but oversamples the edge of the tile
@@ -60,7 +62,7 @@ enum class format_t { UNKNOWN = 0, RAW = 1, GZIP = 2, LZ4 = 3 };
 
 class cache_item_t {
 private:
-  format_t format;
+  std::atomic<format_t> format;
   valhalla::midgard::mem_map<char> data;
   int usages;
   const char* unpacked;
@@ -68,7 +70,10 @@ private:
 public:
   cache_item_t() : format(format_t::UNKNOWN), usages(0), unpacked(nullptr) {
   }
-  cache_item_t(cache_item_t&&) = default;
+  cache_item_t(cache_item_t&& other) noexcept
+      : format(other.format.load(std::memory_order_relaxed)), data(std::move(other.data)),
+        usages(other.usages), unpacked(std::exchange(other.unpacked, nullptr)) {
+  }
   ~cache_item_t() {
     free((void*)unpacked);
   }
@@ -78,8 +83,10 @@ public:
     if (format == format_t::RAW && size != HGT_BYTES) {
       return false;
     }
-    this->format = format;
-    data.map(path, size, POSIX_MADV_SEQUENTIAL, true);
+    valhalla::midgard::mem_map<char> mapped(path, size, POSIX_MADV_SEQUENTIAL, true);
+    data = std::move(mapped);
+    free((void*)detach_unpacked());
+    this->format.store(format, std::memory_order_release);
     return true;
   }
 
@@ -88,7 +95,15 @@ public:
   }
 
   inline format_t get_format() const {
-    return format;
+    return format.load(std::memory_order_acquire);
+  }
+
+  inline size_t get_size() const {
+    return data.size();
+  }
+
+  inline void invalidate() {
+    format.store(format_t::UNKNOWN, std::memory_order_release);
   }
 
   inline int& get_usages() {
@@ -105,13 +120,15 @@ public:
     return rv;
   }
 
-  bool unpack(const char* unpacked) {
+  inline void set_unpacked(const char* unpacked) {
     this->unpacked = unpacked;
+  }
 
+  static bool unpack(format_t format, const char* packed, size_t packed_size, const char* unpacked) {
     if (format == format_t::GZIP) {
       z_stream stream{};
-      stream.next_in = reinterpret_cast<Bytef*>(data.get());
-      stream.avail_in = static_cast<uInt>(data.size());
+      stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(packed));
+      stream.avail_in = static_cast<uInt>(packed_size);
       stream.next_out = reinterpret_cast<Bytef*>(const_cast<char*>(unpacked));
       stream.avail_out = HGT_BYTES;
       const auto initialized = inflateInit2(&stream, MAX_WBITS + 32) == Z_OK;
@@ -122,7 +139,6 @@ public:
 
       if (!valid) {
         LOG_WARN("Corrupt gzip elevation data");
-        format = format_t::UNKNOWN;
         return false;
       }
     } else if (format == format_t::LZ4) {
@@ -130,7 +146,6 @@ public:
       LZ4F_decompressionContext_t decode;
       if (LZ4F_isError(LZ4F_createDecompressionContext(&decode, LZ4F_VERSION))) {
         LOG_WARN("Cannot initialize lz4 elevation decompression");
-        format = format_t::UNKNOWN;
         return false;
       }
       LZ4F_decompressOptions_t options{};
@@ -139,10 +154,10 @@ public:
       size_t result = 1;
 
       do {
-        size_t src_size = data.size() - src_offset;
+        size_t src_size = packed_size - src_offset;
         size_t dest_size = HGT_BYTES - dest_offset;
         result = LZ4F_decompress(decode, const_cast<char*>(unpacked) + dest_offset, &dest_size,
-                                 data.get() + src_offset, &src_size, &options);
+                                 packed + src_offset, &src_size, &options);
         src_offset += src_size;
         dest_offset += dest_size;
         if (LZ4F_isError(result) || (src_size == 0 && dest_size == 0))
@@ -152,17 +167,14 @@ public:
       LZ4F_freeDecompressionContext(decode);
       if (result != 0 || dest_offset != HGT_BYTES) {
         LOG_WARN("Corrupt lz4 elevation data");
-        format = format_t::UNKNOWN;
         return false;
       }
 #else
       LOG_WARN("LZ4 elevation data found but LZ4 support is not compiled in");
-      format = format_t::UNKNOWN;
       return false;
 #endif
     } else {
       LOG_WARN("Corrupt elevation data of unknown type");
-      format = format_t::UNKNOWN;
       return false;
     }
 
@@ -298,7 +310,7 @@ struct cache_t {
   // Map of pending tiles. No matter how many requests received, only one inflate job per tile
   // started.
   std::unordered_map<uint16_t, std::shared_future<tile_data>> pending_tiles;
-  // Guards access to the pending_tiles
+  // Guards cache metadata and pending tiles; decompression runs outside the lock.
   std::recursive_mutex mutex;
   // Elevation tile path
   std::string data_source;
@@ -328,8 +340,21 @@ bool cache_t::insert(size_t pos, const std::string& path, format_t format) {
   if (pos >= cache.size())
     return false;
 
-  std::lock_guard<std::recursive_mutex> lock(mutex);
-  return cache[pos].init(path, format);
+  std::unique_lock<std::recursive_mutex> lock(mutex);
+  for (auto it = pending_tiles.find(pos); it != pending_tiles.end(); it = pending_tiles.find(pos)) {
+    auto future = it->second;
+    lock.unlock();
+    future.wait();
+    lock.lock();
+  }
+  auto& item = cache[pos];
+  // Readers retain pointers into valid mappings until their tile_data is destroyed.
+  if (item.get_format() != format_t::UNKNOWN)
+    return true;
+  if (!item.init(path, format))
+    return false;
+  reusable.erase(pos);
+  return true;
 }
 
 tile_data cache_t::source(uint16_t index) {
@@ -338,15 +363,23 @@ tile_data cache_t::source(uint16_t index) {
     return {};
   }
 
-  // if we don't have anything maybe it's lazy loaded
   auto& item = cache[index];
+  // RAW mappings remain immutable after the release/acquire publication of their format.
+  if (item.get_format() == format_t::RAW)
+    return {this, index, false, (const int16_t*)item.get_data()};
+
+  std::unique_lock<std::recursive_mutex> lock(mutex);
+  auto it = pending_tiles.find(index);
+  if (it != pending_tiles.end()) {
+    auto future = it->second;
+    lock.unlock();
+    return future.get();
+  }
+
+  // if we don't have anything maybe it's lazy loaded
   if (item.get_data() == nullptr) {
-    mutex.lock();
-    if (item.get_data() == nullptr) {
-      auto f = data_source + get_hgt_file_name(index);
-      item.init(f, format_t::RAW);
-    }
-    mutex.unlock();
+    auto f = data_source + get_hgt_file_name(index);
+    item.init(f, format_t::RAW);
   }
 
   // it wasn't in cache and when we tried to load it the file was of unknown type
@@ -360,50 +393,63 @@ tile_data cache_t::source(uint16_t index) {
   }
 
   // we were able to load it but the format wasn't RAW, which only leaves compressed formats
-  mutex.lock();
-  auto it = pending_tiles.find(index);
-  if (it != pending_tiles.end()) {
-    auto future = it->second;
-    mutex.unlock();
-    return future.get();
-  }
-
   // item in cache is already unpacked
   const char* unpacked = item.get_unpacked();
   if (unpacked) {
-    auto rv = tile_data(this, index, true, (const int16_t*)unpacked);
-    mutex.unlock();
-    return rv;
+    return tile_data(this, index, true, (const int16_t*)unpacked);
   }
 
   std::promise<tile_data> promise;
-  pending_tiles.emplace(index, promise.get_future());
+  std::unique_ptr<char, decltype(&free)> buffer(nullptr, &free);
 
   if (reusable.size() >= UNPACKED_TILES_COUNT) {
     for (auto i : reusable) {
       if (cache[i].get_usages() <= 0) {
         reusable.erase(i);
-        unpacked = cache[i].detach_unpacked();
+        buffer.reset(const_cast<char*>(cache[i].detach_unpacked()));
         break;
       }
     }
   }
-  if (!unpacked) {
-    unpacked = (char*)malloc(HGT_BYTES);
+  if (!buffer) {
+    buffer.reset((char*)malloc(HGT_BYTES));
+    if (!buffer)
+      throw std::bad_alloc();
   }
   reusable.insert(index);
-  auto rv = tile_data(this, index, true, (const int16_t*)unpacked);
-  mutex.unlock();
-
-  if (!item.unpack(unpacked)) {
-    rv = tile_data();
+  try {
+    pending_tiles.emplace(index, promise.get_future());
+  } catch (...) {
+    reusable.erase(index);
+    throw;
   }
-
-  mutex.lock();
-  promise.set_value(rv);
-  pending_tiles.erase(index);
-  mutex.unlock();
-  return rv;
+  unpacked = buffer.release();
+  item.set_unpacked(unpacked);
+  const auto format = item.get_format();
+  const auto packed = item.get_data();
+  const auto packed_size = item.get_size();
+  tile_data rv;
+  try {
+    rv = tile_data(this, index, true, (const int16_t*)unpacked);
+    lock.unlock();
+    const auto valid = cache_item_t::unpack(format, packed, packed_size, unpacked);
+    lock.lock();
+    if (!valid) {
+      item.invalidate();
+      rv = tile_data();
+    }
+    promise.set_value(rv);
+    pending_tiles.erase(index);
+    return rv;
+  } catch (...) {
+    if (!lock.owns_lock())
+      lock.lock();
+    item.invalidate();
+    rv = tile_data();
+    promise.set_exception(std::current_exception());
+    pending_tiles.erase(index);
+    throw;
+  }
 }
 
 tile_data::tile_data(cache_t* c, uint16_t index, bool reusable, const int16_t* data)
@@ -646,7 +692,7 @@ void sample::cache_initialisation(const std::string& data_source) {
     const auto fp_str = f.path().string();
     auto data = cache_item_t::parse_hgt_name(fp_str);
     if (data && data->second != format_t::UNKNOWN) {
-      if (!cache_->insert(data->first, fp_str, data->second)) {
+      if (!cache_->cache[data->first].init(fp_str, data->second)) {
         LOG_WARN("Corrupt elevation data: " + fp_str);
       }
     }
