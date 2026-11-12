@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string_view>
+#include <type_traits>
 
 namespace {
 
@@ -117,6 +119,62 @@ template <typename T> void CheckNonFiniteSerialization() {
 TEST(JSON, NonFiniteSerialization) {
   CheckNonFiniteSerialization<float>();
   CheckNonFiniteSerialization<double>();
+}
+
+TEST(JSON, StringViews) {
+  const char text[] = {'a', '\0', 'b', 'c'};
+  const std::string_view view(text, 3);
+  rapidjson::writer_wrapper_t object;
+  object.start_object();
+  object("empty", std::string_view{});
+  object(std::string_view{}, std::string_view{});
+  object(view, view);
+  object.end_object();
+  rapidjson::Document parsed;
+  parsed.Parse(object.get_buffer());
+  ASSERT_FALSE(parsed.HasParseError());
+  EXPECT_STREQ(parsed["empty"].GetString(), "");
+  EXPECT_STREQ(parsed[""].GetString(), "");
+  const rapidjson::Value key(view.data(), view.size());
+  ASSERT_TRUE(parsed.HasMember(key));
+  EXPECT_EQ(std::string_view(parsed[key].GetString(), parsed[key].GetStringLength()), view);
+
+  rapidjson::writer_wrapper_t array;
+  array.start_array();
+  array(std::string_view{});
+  array(view);
+  array.end_array();
+  parsed.Parse(array.get_buffer());
+  ASSERT_FALSE(parsed.HasParseError());
+  ASSERT_EQ(parsed.Size(), 2);
+  EXPECT_STREQ(parsed[0u].GetString(), "");
+  EXPECT_EQ(std::string_view(parsed[1u].GetString(), parsed[1u].GetStringLength()), view);
+}
+
+template <typename T> void CheckIntegerSerialization() {
+  rapidjson::writer_wrapper_t array;
+  array.start_array();
+  array(std::numeric_limits<T>::lowest());
+  array(std::numeric_limits<T>::max());
+  array.end_array();
+  rapidjson::Document parsed;
+  parsed.Parse(array.get_buffer());
+  ASSERT_FALSE(parsed.HasParseError());
+  ASSERT_EQ(parsed.Size(), 2);
+  if constexpr (std::is_signed_v<T>) {
+    EXPECT_EQ(parsed[0u].GetInt64(), std::numeric_limits<T>::lowest());
+    EXPECT_EQ(parsed[1u].GetInt64(), std::numeric_limits<T>::max());
+  } else {
+    EXPECT_EQ(parsed[0u].GetUint64(), std::numeric_limits<T>::lowest());
+    EXPECT_EQ(parsed[1u].GetUint64(), std::numeric_limits<T>::max());
+  }
+}
+
+TEST(JSON, IntegerTypes) {
+  CheckIntegerSerialization<long>();
+  CheckIntegerSerialization<unsigned long>();
+  CheckIntegerSerialization<long long>();
+  CheckIntegerSerialization<unsigned long long>();
 }
 
 TEST(JSON, Serialize) {

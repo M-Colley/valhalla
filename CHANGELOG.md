@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: handle empty and sliced string views and portable integer types in JSON writers
    * FIXED: preserve graph tile ownership during cross-tile node, opposing-edge, and shortcut lookups
    * FIXED: serialize nonfinite object and array values as null instead of malformed JSON
    * FIXED: account for charged LRU tile weights and roll back failed cache insertions
