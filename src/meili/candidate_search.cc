@@ -221,11 +221,9 @@ CandidateGridQuery::GetGrid(const int32_t bin_id,
   int32_t bin_col = rc.second % ndiv;
   int32_t bin_index = (bin_row * ndiv) + bin_col;
 
-  // Insert the bin into the cache and index the bin
-  const auto inserted =
-      grid_cache_.emplace(bin_id, grid_t(tile->BoundingBox(), cell_width_, cell_height_));
-  IndexBin(tile, bin_index, reader_, inserted.first->second);
-  return &(inserted.first->second);
+  grid_t grid(tile->BoundingBox(), cell_width_, cell_height_);
+  IndexBin(tile, bin_index, reader_, grid);
+  return &grid_cache_.emplace(bin_id, std::move(grid)).first->second;
 }
 
 std::unordered_set<baldr::GraphId>
