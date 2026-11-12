@@ -345,7 +345,7 @@ size_t TileCacheLRU::TrimToFit(const size_t required_size) {
   while ((OverCommitted() || (max_cache_size_ - cache_size_) < required_size) &&
          !key_val_lru_list_.empty()) {
     const KeyValue& entry_to_evict = key_val_lru_list_.back();
-    const auto tile_size = entry_to_evict.tile->header()->end_offset();
+    const auto tile_size = entry_to_evict.size;
     cache_size_ -= tile_size;
     freed_space += tile_size;
     cache_.erase(entry_to_evict.id);
@@ -368,16 +368,16 @@ graph_tile_ptr TileCacheLRU::Put(const GraphId& graphid, graph_tile_ptr tile, si
     if (mem_control_ == MemoryLimitControl::HARD) {
       TrimToFit(new_tile_size);
     }
-    key_val_lru_list_.emplace_front(KeyValue{graphid, std::move(tile)});
-    cache_.emplace(graphid, key_val_lru_list_.begin());
+    key_val_lru_list_.emplace_front(graphid, std::move(tile), new_tile_size);
+    try {
+      cache_.emplace(graphid, key_val_lru_list_.begin());
+    } catch (...) {
+      key_val_lru_list_.pop_front();
+      throw;
+    }
   } else {
-    // Value update; the new size may be different form the previous
-    // TODO: in practice tile size for a specific id never changes
-    //  if tile set is changed (e.g. new version), the cache should be cleared
-    //  do we need to take it into account here? (can dramatically simplify the code)
-    // note: SimpleTileCache does not handle the overwrite at the moment
     auto& entry_iter = cached->second;
-    const auto old_tile_size = entry_iter->tile->header()->end_offset();
+    const auto old_tile_size = entry_iter->size;
 
     // do it before TrimToFit avoid its eviction to free space
     MoveToLruHead(entry_iter);
@@ -392,6 +392,7 @@ graph_tile_ptr TileCacheLRU::Put(const GraphId& graphid, graph_tile_ptr tile, si
     }
 
     entry_iter->tile = std::move(tile);
+    entry_iter->size = new_tile_size;
     cache_size_ -= old_tile_size;
   }
   cache_size_ += new_tile_size;
