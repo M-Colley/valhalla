@@ -23,6 +23,7 @@
 #include <locale>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 namespace {
@@ -339,7 +340,9 @@ public:
   }
 
   template <typename K, typename V> inline void operator()(const K& key, const V& value) {
-    if constexpr (is_string_like_v<K>) {
+    if constexpr (std::is_same_v<K, std::string_view>) {
+      writer.String(key.empty() ? "" : key.data(), key.size());
+    } else if constexpr (is_string_like_v<K>) {
       writer.String(key);
     } else {
       static_assert(always_false<K>, "Unsupported key type");
@@ -365,7 +368,7 @@ public:
     } else if constexpr (std::is_same_v<V, std::nullptr_t>) {
       writer.Null();
     } else if constexpr (std::is_same_v<V, std::string_view>) {
-      writer.String(value.data(), value.size());
+      writer.String(value.empty() ? "" : value.data(), value.size());
     } else if constexpr (std::is_same_v<V, const char*>) {
       writer.String(value, std::strlen(value));
     } else if constexpr (is_string_like_v<V>) {
@@ -376,13 +379,14 @@ public:
   }
 
   template <typename V> inline void operator()(const V& value) {
-    if constexpr (std::is_same_v<V, int> || std::is_same_v<V, int32_t>) {
+    if constexpr (std::is_same_v<V, int> || std::is_same_v<V, int32_t> || std::is_same_v<V, long>) {
       writer.Int64(static_cast<int64_t>(value));
-    } else if constexpr (std::is_same_v<V, unsigned int> || std::is_same_v<V, uint32_t>) {
+    } else if constexpr (std::is_same_v<V, unsigned int> || std::is_same_v<V, uint32_t> ||
+                         std::is_same_v<V, unsigned long>) {
       writer.Uint64(static_cast<uint64_t>(value));
-    } else if constexpr (std::is_same_v<V, uint64_t>) {
+    } else if constexpr (std::is_same_v<V, uint64_t> || std::is_same_v<V, unsigned long long>) {
       writer.Uint64(value);
-    } else if constexpr (std::is_same_v<V, int64_t>) {
+    } else if constexpr (std::is_same_v<V, int64_t> || std::is_same_v<V, long long>) {
       writer.Int64(value);
     } else if constexpr (std::is_same_v<V, double> || std::is_same_v<V, float>) {
       if (!std::isfinite(value)) {
@@ -394,6 +398,8 @@ public:
       writer.Bool(value);
     } else if constexpr (std::is_same_v<V, std::nullptr_t>) {
       writer.Null();
+    } else if constexpr (std::is_same_v<V, std::string_view>) {
+      writer.String(value.empty() ? "" : value.data(), value.size());
     } else if constexpr (is_string_like_v<V>) {
       writer.String(value);
     } else {
