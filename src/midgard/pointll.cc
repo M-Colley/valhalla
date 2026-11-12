@@ -10,7 +10,7 @@ namespace midgard {
 template <typename PrecisionT>
 GeoPoint<PrecisionT> GeoPoint<PrecisionT>::PointAlongSegment(const GeoPoint<PrecisionT>& p,
                                                              PrecisionT distance) const {
-  if (distance == 0)
+  if (distance == 0 || *this == p)
     return *this;
   if (distance == 1)
     return p;
@@ -24,8 +24,14 @@ GeoPoint<PrecisionT> GeoPoint<PrecisionT>::PointAlongSegment(const GeoPoint<Prec
   const auto sl2 = sin(lat2);
   const auto cl1 = cos(lat1);
   const auto cl2 = cos(lat2);
-  // fairly accurate distance between points
-  const auto d = acos(sl1 * sl2 + cl1 * cl2 * cos(lon1 - lon2));
+  const auto cos_delta_lon = cos(lon2 - lon1);
+  const auto cross_x = cl2 * sin(lon2 - lon1);
+  const auto cross_y = cl1 * sl2 - sl1 * cl2 * cos_delta_lon;
+  const auto dot = sl1 * sl2 + cl1 * cl2 * cos_delta_lon;
+  // atan2 remains stable for short and nearly antipodal segments.
+  const auto d = atan2(hypot(cross_x, cross_y), dot);
+  if (d == 0)
+    return *this;
   // interpolation parameters
   auto sd = sin(d);
   const auto a = sin(d * (1 - distance)) / sd;
