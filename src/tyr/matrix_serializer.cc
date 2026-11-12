@@ -126,8 +126,8 @@ void locations(const google::protobuf::RepeatedPtrField<valhalla::Location>& loc
       if (!location.name().empty()) {
         writer("name", location.name());
       }
+      writer.end_object();
     }
-    writer.end_object();
   }
 }
 

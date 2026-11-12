@@ -464,6 +464,51 @@ TEST(Matrix, partial_matrix) {
   EXPECT_EQ(found, 2) << " partial result did not find 2 results as expected";
 }
 
+TEST(Matrix, UncorrelatedLocationsSerialization) {
+  Api request;
+  auto* options = request.mutable_options();
+  options->set_format(Options::json);
+  options->set_verbose(true);
+  options->set_action(Options::sources_to_targets);
+  for (int i = 0; i < 3; ++i) {
+    auto* source = options->add_sources();
+    auto* target = options->add_targets();
+    if (i == 1) {
+      source->set_name("source");
+      source->mutable_correlation()->add_edges()->mutable_ll()->set_lat(10);
+      target->set_name("target");
+      target->mutable_correlation()->add_edges()->mutable_ll()->set_lat(20);
+    }
+  }
+  auto* matrix = request.mutable_matrix();
+  for (int i = 0; i < 9; ++i) {
+    matrix->add_times(0);
+    matrix->add_distances(0);
+    matrix->add_costs(0);
+    matrix->add_date_times("");
+    matrix->add_time_zone_offsets("");
+    matrix->add_time_zone_names("");
+    matrix->add_begin_lat(0);
+    matrix->add_begin_lon(0);
+    matrix->add_end_lat(0);
+    matrix->add_end_lon(0);
+    matrix->add_begin_heading(0);
+    matrix->add_end_heading(0);
+  }
+
+  const auto output = tyr::serializeMatrix(request);
+  rapidjson::Document json;
+  json.Parse(output);
+  ASSERT_FALSE(json.HasParseError()) << output;
+  for (const char* key : {"sources", "targets"}) {
+    ASSERT_EQ(json[key].Size(), 3);
+    EXPECT_TRUE(json[key][0u].IsNull());
+    ASSERT_TRUE(json[key][1].IsObject());
+    EXPECT_TRUE(json[key][1].HasMember("name"));
+    EXPECT_TRUE(json[key][2].IsNull());
+  }
+}
+
 // slim dowm matrix response: https://github.com/valhalla/valhalla/pull/3987
 const auto test_matrix_default = R"({
     "sources":[
