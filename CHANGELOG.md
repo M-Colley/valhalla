@@ -1,6 +1,9 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: preserve graph tile ownership during cross-tile node, opposing-edge, and shortcut lookups
+   * FIXED: honor reachability direction masks and avoid counting queued nodes twice
+   * FIXED: enforce total linear cost edge limits and preserve shortcut factors, permissions, and tile ownership
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)

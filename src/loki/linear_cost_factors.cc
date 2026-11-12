@@ -20,22 +20,14 @@ void add_shortcut(GraphReader& reader,
                   valhalla::Costing_Options* options,
                   valhalla::CostFactorEdge* cost_factor) {
 
-  // allow applies to the whole edge
-  if (cost_factor->allow_types() && cost_factor->factor() != 1.0) {
-    auto* e = options->add_cost_factor_edges();
-    e->set_id(shortcut.value);
-    e->set_allow_types(cost_factor->allow_types());
-    return;
-  }
-
   GraphId edge = static_cast<GraphId>(cost_factor->id());
   graph_tile_ptr tile = reader.GetGraphTile(shortcut);
   // it's part of a shortcut
   auto constituents = reader.RecoverShortcut(shortcut);
-  auto* shortcut_edge = tile->directededge(shortcut);
+  const double shortcut_length = tile->directededge(shortcut)->length();
 
   tile = reader.GetGraphTile(edge);
-  auto* current_edge = tile->directededge(edge);
+  const double current_edge_length = tile->directededge(edge)->length();
 
   // walk the base edges until we find ours
   uint64_t accumulated_length = 0;
@@ -53,12 +45,9 @@ void add_shortcut(GraphReader& reader,
   auto* e = options->add_cost_factor_edges();
   e->set_id(shortcut);
   e->set_factor(cost_factor->factor());
-  e->set_start(static_cast<double>(accumulated_length + (static_cast<double>(current_edge->length()) *
-                                                         cost_factor->start())) /
-               static_cast<double>(shortcut_edge->length()));
-  e->set_end(static_cast<double>(accumulated_length +
-                                 (static_cast<double>(current_edge->length()) * cost_factor->end())) /
-             static_cast<double>(shortcut_edge->length()));
+  e->set_allow_types(cost_factor->allow_types());
+  e->set_start((accumulated_length + current_edge_length * cost_factor->start()) / shortcut_length);
+  e->set_end((accumulated_length + current_edge_length * cost_factor->end()) / shortcut_length);
 }
 
 } // namespace
@@ -77,6 +66,11 @@ std::vector<size_t> add_cost_factor_edges(const sif::mode_costing_t& mode_costin
 
   // keep track of how many edges we're adding
   uint64_t edge_count = 0;
+  const auto count_edge = [&]() {
+    if (edge_count >= max_allowed_edges)
+      throw valhalla_exception_t{234};
+    ++edge_count;
+  };
   std::vector<size_t> failed_lines;
 
   for (int line_idx = 0; line_idx < options.cost_factor_lines_size(); ++line_idx) {
@@ -89,13 +83,11 @@ std::vector<size_t> add_cost_factor_edges(const sif::mode_costing_t& mode_costin
     }
     for (const auto& leg : legs) {
       for (size_t i = 0; i < leg.size(); ++i) {
-        if (edge_count > max_allowed_edges)
-          throw valhalla_exception_t{234};
         auto& path_info = leg[i];
         bool is_first = i == 0;
         bool is_last = i == leg.size() - 1;
         if (is_first && is_last) { // trivial path
-          edge_count++;
+          count_edge();
           auto* e = costing_options->add_cost_factor_edges();
           e->set_id(path_info.edgeid);
           e->set_factor(line.cost_factor());
@@ -114,6 +106,7 @@ std::vector<size_t> add_cost_factor_edges(const sif::mode_costing_t& mode_costin
           }
           auto shortcut = reader.GetShortcut(path_info.edgeid);
           if (shortcut.is_valid()) {
+            count_edge();
             add_shortcut(reader, shortcut, costing_options, e);
           }
         } else if (is_first || is_last) { // beginning or end edge
@@ -128,7 +121,7 @@ std::vector<size_t> add_cost_factor_edges(const sif::mode_costing_t& mode_costin
               if (de && de->length() * (end - start) < kMinCostFactorEdgeLength) {
                 break;
               }
-              edge_count++;
+              count_edge();
               auto* e = costing_options->add_cost_factor_edges();
               e->set_id(path_info.edgeid);
               // apply the minimum allowed value specified in the config
@@ -138,13 +131,14 @@ std::vector<size_t> add_cost_factor_edges(const sif::mode_costing_t& mode_costin
               e->set_end(end);
               auto shortcut = reader.GetShortcut(path_info.edgeid);
               if (shortcut.is_valid()) {
+                count_edge();
                 add_shortcut(reader, shortcut, costing_options, e);
               }
               break;
             }
           }
         } else { // intermediate edges
-          edge_count++;
+          count_edge();
           auto* e = costing_options->add_cost_factor_edges();
           e->set_id(path_info.edgeid);
           e->set_factor(std::max(line.cost_factor(), min_allowed_factor));
@@ -156,7 +150,7 @@ std::vector<size_t> add_cost_factor_edges(const sif::mode_costing_t& mode_costin
           if (path_info.is_shortcut) {
             auto constituents = reader.RecoverShortcut(path_info.edgeid);
             for (const auto& constituent : constituents) {
-              edge_count++;
+              count_edge();
               auto* e = costing_options->add_cost_factor_edges();
               e->set_id(constituent);
               e->set_factor(std::max(line.cost_factor(), min_allowed_factor));
@@ -170,6 +164,7 @@ std::vector<size_t> add_cost_factor_edges(const sif::mode_costing_t& mode_costin
             // a little, can't we persist this information somehow?
             auto shortcut = reader.GetShortcut(path_info.edgeid);
             if (shortcut.is_valid()) {
+              count_edge();
               add_shortcut(reader, shortcut, costing_options, e);
             }
           }

@@ -17,8 +17,9 @@ void Reach::enqueue(const baldr::GraphId& node_id,
                     baldr::GraphReader& reader,
                     const sif::cost_ptr_t& costing,
                     graph_tile_ptr tile) {
-  // skip nodes which are done or invalid
-  if (!node_id.is_valid() || done_.find(node_id) != done_.cend())
+  // skip nodes which are done, queued or invalid
+  if (!node_id.is_valid() || done_.find(node_id) != done_.cend() ||
+      queue_.find(node_id) != queue_.cend())
     return;
   // if the node isnt accessible bail
   if (!reader.GetGraphTile(node_id, tile))
@@ -191,14 +192,14 @@ directed_reach Reach::exact(const valhalla::baldr::DirectedEdge* edge,
   costings[static_cast<int>(costing->travel_mode())] = costing;
 
   // expand in the forward direction
-  if (direction | kOutbound) {
+  if (direction & kOutbound) {
     Clear();
     Compute<thor::ExpansionType::forward>(locations_, reader, costings, costing->travel_mode());
     reach.outbound = std::min(static_cast<uint32_t>(done_.size() - transitions_), max_reach);
   }
 
   // expand in the reverse direction
-  if (direction | kInbound) {
+  if (direction & kInbound) {
     Clear();
     Compute<thor::ExpansionType::reverse>(locations_, reader, costings, costing->travel_mode());
     reach.inbound = std::min(static_cast<uint32_t>(done_.size() - transitions_), max_reach);
