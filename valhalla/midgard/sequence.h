@@ -94,7 +94,7 @@ inline void* mmap(void* addr, size_t length, int prot, int flags, int fd, long l
   HANDLE mapped_handle = ::CreateFileMapping(file_handle, nullptr, protect, 0, 0, nullptr);
   if (mapped_handle) {
     map = ::MapViewOfFile(mapped_handle, access, (DWORD)((offset >> 32) & 0xffffffffUL),
-                          (DWORD)(offset & 0xffffffffUL), 0);
+                          (DWORD)(offset & 0xffffffffUL), length);
 
     BOOL rc = FALSE;
     rc = ::CloseHandle(mapped_handle); // release internal reference to mapped view
@@ -123,8 +123,19 @@ namespace midgard {
 template <class T> class mem_map {
 public:
   // non-copyable
-  mem_map(mem_map&&) = default;
-  mem_map& operator=(mem_map&&) = default;
+  mem_map(mem_map&& other) noexcept
+      : ptr(std::exchange(other.ptr, nullptr)), count(std::exchange(other.count, 0)),
+        file_name(std::move(other.file_name)) {
+  }
+  mem_map& operator=(mem_map&& other) {
+    if (this != &other) {
+      unmap();
+      ptr = std::exchange(other.ptr, nullptr);
+      count = std::exchange(other.count, 0);
+      file_name = std::move(other.file_name);
+    }
+    return *this;
+  }
   mem_map(const mem_map&) = delete;
   mem_map& operator=(const mem_map&) = delete;
 
@@ -171,6 +182,7 @@ public:
 
     // has to be something to map
     if (new_count > 0) {
+      std::string mapped_file_name(new_file_name);
       auto fd =
 #if defined(_WIN32)
           _open(new_file_name.c_str(), (readonly ? O_RDONLY : O_RDWR), 0);
@@ -180,23 +192,29 @@ public:
       if (fd == -1) {
         throw std::runtime_error(new_file_name + "(open): " + strerror(errno));
       }
-      ptr = mmap(nullptr, new_count * sizeof(T), (readonly ? PROT_READ : PROT_READ | PROT_WRITE),
-                 MAP_SHARED, fd, 0);
-      if (ptr == MAP_FAILED) {
-        throw std::runtime_error(new_file_name + "(mmap): " + strerror(errno));
-      }
+      auto mapped = mmap(nullptr, new_count * sizeof(T),
+                         (readonly ? PROT_READ : PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
+      const auto map_error = errno;
 
 #if defined(_WIN32)
       auto cl = _close(fd);
 #else
       auto cl = close(fd);
-      posix_madvise(ptr, new_count * sizeof(T), advice);
 #endif
-      if (cl == -1) {
-        throw std::runtime_error(new_file_name + "(close): " + strerror(errno));
+      if (mapped == MAP_FAILED) {
+        throw std::runtime_error(new_file_name + "(mmap): " + strerror(map_error));
       }
+      if (cl == -1) {
+        const auto close_error = errno;
+        munmap(mapped, new_count * sizeof(T));
+        throw std::runtime_error(new_file_name + "(close): " + strerror(close_error));
+      }
+#if !defined(_WIN32)
+      posix_madvise(mapped, new_count * sizeof(T), advice);
+#endif
+      ptr = mapped;
       count = new_count;
-      file_name = new_file_name;
+      file_name = std::move(mapped_file_name);
     }
   }
 
