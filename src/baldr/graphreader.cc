@@ -889,7 +889,8 @@ GraphId GraphReader::GetShortcut(const GraphId& id) {
   GraphId edgeid = id;
   const NodeInfo* node = nullptr;
   const DirectedEdge* cont_de = nullptr;
-  const DirectedEdge* first_de = GetOpposingEdge(id);
+  graph_tile_ptr first_tile = tile;
+  const DirectedEdge* first_de = GetOpposingEdge(id, first_tile);
   while (true) {
     // Get the continuing directed edge. Initial case is to use the opposing
     // directed edge.
@@ -909,13 +910,14 @@ GraphId GraphReader::GetShortcut(const GraphId& id) {
 
     // Get the end node and end node tile
     GraphId endnode = cont_de->endnode();
+    const auto opp_index = cont_de->opp_index();
     if (cont_de->leaves_tile()) {
       tile = GetGraphTile(endnode.tile_base());
     }
     node = tile->node(endnode);
 
     // Get the opposing edge Id and its directed edge
-    uint32_t idx = node->edge_index() + cont_de->opp_index();
+    uint32_t idx = node->edge_index() + opp_index;
     edgeid = {endnode.tileid(), endnode.level(), idx};
     directededge = tile->directededge(edgeid);
 

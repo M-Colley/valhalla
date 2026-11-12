@@ -635,9 +635,11 @@ public:
    *             will point to the tile containing the opp_edge
    */
   const DirectedEdge* GetOpposingEdge(const DirectedEdge* edge, graph_tile_ptr& opp_tile) {
-    if (GetGraphTile(edge->endnode(), opp_tile)) {
-      const auto* node = opp_tile->node(edge->endnode());
-      return opp_tile->directededge(node->edge_index() + edge->opp_index());
+    const auto endnode = edge->endnode();
+    const auto opp_index = edge->opp_index();
+    if (GetGraphTile(endnode, opp_tile)) {
+      const auto* node = opp_tile->node(endnode);
+      return opp_tile->directededge(node->edge_index() + opp_index);
     }
     return nullptr;
   }
@@ -650,8 +652,8 @@ public:
    *                 will point to the tile containing the end_node of edge
    */
   const NodeInfo* GetEndNode(const DirectedEdge* edge, graph_tile_ptr& end_node_tile) {
-    return GetGraphTile(edge->endnode(), end_node_tile) ? end_node_tile->node(edge->endnode())
-                                                        : nullptr;
+    const auto endnode = edge->endnode();
+    return GetGraphTile(endnode, end_node_tile) ? end_node_tile->node(endnode) : nullptr;
   }
 
   /**

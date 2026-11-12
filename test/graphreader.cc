@@ -8,6 +8,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -108,6 +109,77 @@ TEST(TileUrl, WorkersClearRetryableFailuresAfterEachRequest) {
   thor_worker.cleanup();
   EXPECT_NE(reader->GetGraphTile(tile_id), nullptr);
   EXPECT_EQ(requests, 3);
+}
+
+class BoundaryGraphTile : public GraphTile {
+public:
+  explicit BoundaryGraphTile(const GraphId& id) {
+    header_storage_.set_graphid(id.tile_base());
+    header_storage_.set_nodecount(1);
+    header_storage_.set_directededgecount(edges_.size());
+    node_storage_[0].set_edge_index(0);
+    node_storage_[0].set_edge_count(edges_.size());
+    edges_[0].set_endnode(GraphId(id.tileid() == 10 ? 11 : 10, 1, 0));
+    edges_[0].set_opp_index(0);
+    edges_[0].set_leaves_tile(true);
+    if (id.tileid() == 10) {
+      edges_[0].set_superseded(2);
+      edges_[1].set_shortcut(1);
+    }
+    header_ = &header_storage_;
+    nodes_ = node_storage_.data();
+    directededges_ = edges_.data();
+  }
+
+private:
+  GraphTileHeader header_storage_;
+  std::array<NodeInfo, 1> node_storage_{};
+  std::array<DirectedEdge, 2> edges_{};
+};
+
+class BoundaryGraphReader : public GraphReader {
+public:
+  BoundaryGraphReader() : GraphReader(boost::property_tree::ptree{}) {
+  }
+
+  graph_tile_ptr GetGraphTile(const GraphId& id) override {
+    if (!tile_ || tile_->id() != id.tile_base())
+      tile_ = graph_tile_ptr{new BoundaryGraphTile(id)};
+    return tile_;
+  }
+
+private:
+  graph_tile_ptr tile_;
+};
+
+TEST(GraphReader, EndNodeAcrossTileBoundary) {
+  BoundaryGraphReader reader;
+  const GraphId edge_id(10, 1, 0);
+  auto tile = reader.GetGraphTile(edge_id);
+  const auto* edge = tile->directededge(edge_id);
+
+  const auto* node = reader.GetEndNode(edge, tile);
+  ASSERT_NE(node, nullptr);
+  EXPECT_EQ(tile->id(), GraphId(11, 1, 0));
+  EXPECT_EQ(node, tile->node(0));
+}
+
+TEST(GraphReader, OpposingEdgeAcrossTileBoundary) {
+  BoundaryGraphReader reader;
+  const GraphId edge_id(10, 1, 0);
+  auto tile = reader.GetGraphTile(edge_id);
+  const auto* edge = tile->directededge(edge_id);
+
+  const auto* opposing = reader.GetOpposingEdge(edge, tile);
+  ASSERT_NE(opposing, nullptr);
+  EXPECT_EQ(tile->id(), GraphId(11, 1, 0));
+  EXPECT_EQ(opposing, tile->directededge(0));
+  EXPECT_EQ(opposing->endnode(), edge_id);
+}
+
+TEST(GraphReader, ShortcutAcrossTileBoundary) {
+  BoundaryGraphReader reader;
+  EXPECT_EQ(reader.GetShortcut(GraphId(10, 1, 0)), GraphId(10, 1, 1));
 }
 
 TEST(SimpleCache, QueryByPointOutOfRangeLL) {
