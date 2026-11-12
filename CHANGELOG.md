@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: decode level precision as decimal digits and preserve fractional level labels
    * FIXED: stop turn-lane processing from reading past the final maneuver
    * FIXED: reset reused CURL request ranges, decoding, and interruption callbacks
    * FIXED: reject durations without shape points and reject nonfinite request coordinates
