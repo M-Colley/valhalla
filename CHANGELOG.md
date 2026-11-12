@@ -1,6 +1,12 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: account for charged LRU tile weights and roll back failed cache insertions
+   * FIXED: reject JSON numeric conversions outside the requested type's range
+   * FIXED: avoid counting queued reachability nodes more than once
+   * FIXED: enforce the total linear cost edge limit, including generated shortcut records
+   * FIXED: retain shortcut cost factors and allow flags, and read edge lengths while their tiles are owned
+   * FIXED: synchronize elevation tile publication and recover from mapping, decompression, and allocation failures
    * FIXED: transfer memory-map ownership on moves, recover from failed mappings, and honor partial mapping lengths on Windows
    * FIXED: bound tar field and payload reads, and reject entry sizes that exceed the address space
    * FIXED: round negative elevation samples correctly and handle empty profiles and zero-length edges
