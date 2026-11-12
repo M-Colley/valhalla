@@ -4,7 +4,6 @@
 #include <boost/variant/static_visitor.hpp>
 #include <boost/variant/variant.hpp>
 
-#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -78,13 +77,19 @@ protected:
 // how we serialize the different primitives to string
 class OstreamVisitor : public boost::static_visitor<std::ostream&> {
 public:
-  OstreamVisitor(std::ostream& o) : ostream_(o), fill(o.fill()) {
+  OstreamVisitor(std::ostream& o) : ostream_(o) {
   }
 
   std::ostream& operator()(const std::string& value) const {
     ostream_ << '"';
-    // TODO: this may need to get more complicated
-    for (const auto& c : value) {
+    size_t start = 0;
+    for (size_t i = 0; i < value.size(); ++i) {
+      const auto c = value[i];
+      const auto byte = static_cast<unsigned char>(c);
+      if (byte >= 0x20 && byte != 0x7f && c != '\\' && c != '"' && c != '/')
+        continue;
+      if (i > start)
+        ostream_.write(value.data() + start, static_cast<std::streamsize>(i - start));
       switch (c) {
         case '\\':
           ostream_ << "\\\\";
@@ -111,23 +116,14 @@ public:
           ostream_ << "\\t";
           break;
         default:
-          if (iscntrl(c)) {
-            // format changes for json hex
-            ostream_.setf(std::ios::hex, std::ios::basefield);
-            ostream_.setf(std::ios::uppercase);
-            ostream_.fill('0');
-            // output hex
-            ostream_ << "\\u" << std::setw(4) << static_cast<int>(c);
-            // tear down format changes
-            ostream_.unsetf(std::ios::basefield);
-            ostream_.unsetf(std::ios::uppercase);
-            ostream_.fill(fill);
-          } else {
-            ostream_ << c;
-          }
+          constexpr char digits[] = "0123456789ABCDEF";
+          ostream_ << "\\u00" << digits[byte >> 4] << digits[byte & 0xf];
           break;
       }
+      start = i + 1;
     }
+    if (start < value.size())
+      ostream_.write(value.data() + start, static_cast<std::streamsize>(value.size() - start));
     return ostream_ << '"';
   }
   std::ostream& operator()(uint64_t value) const {
@@ -163,7 +159,6 @@ public:
 
 private:
   std::ostream& ostream_;
-  char fill;
 };
 
 inline std::ostream& operator<<(std::ostream& stream, const fixed_t& fp) {
@@ -197,12 +192,14 @@ inline void applyOutputVisitor(std::ostream& stream, Visitable& visitable) {
 inline std::ostream& operator<<(std::ostream& stream, const Jmap& json) {
   stream << '{';
   bool separator = false;
+  OstreamVisitor key_visitor(stream);
   for (const auto& key_value : json) {
     if (separator) {
       stream << ',';
     }
     separator = true;
-    stream << '"' << key_value.first << "\":";
+    key_visitor(key_value.first);
+    stream << ':';
     applyOutputVisitor(stream, key_value.second);
   }
   stream << '}';

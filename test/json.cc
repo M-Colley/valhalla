@@ -7,6 +7,44 @@
 
 namespace {
 
+TEST(JSON, EscapedObjectKeys) {
+  const std::string key("key\"\\\n\0", 7);
+  std::ostringstream output;
+  output << *valhalla::baldr::json::map({{key, int64_t{7}}, {"plain", true}});
+  rapidjson::Document parsed;
+  parsed.Parse(output.str());
+  ASSERT_FALSE(parsed.HasParseError()) << output.str();
+  const rapidjson::Value json_key(key.data(), key.size());
+  ASSERT_TRUE(parsed.HasMember(json_key));
+  EXPECT_EQ(parsed[json_key].GetInt(), 7);
+  EXPECT_TRUE(parsed["plain"].GetBool());
+}
+
+TEST(JSON, EscapingPreservesStreamFormat) {
+  std::ostringstream output;
+  output << std::hex << std::uppercase << std::setfill('x');
+  const auto flags = output.flags();
+  valhalla::baldr::json::OstreamVisitor visitor(output);
+  visitor(std::string(1, '\1'));
+  EXPECT_EQ(output.str(), "\"\\u0001\"");
+  EXPECT_EQ(output.flags(), flags);
+  EXPECT_EQ(output.fill(), 'x');
+}
+
+TEST(JSON, Utf8AndControlCharacters) {
+  std::string text = "\xE6\x9D\xB1\xE4\xBA\xAC \xF0\x9F\x9A\xB2";
+  for (char byte = 0; byte < 0x20; ++byte)
+    text.push_back(byte);
+  text.push_back('\x7f');
+  std::ostringstream output;
+  output << *valhalla::baldr::json::array({text});
+  rapidjson::Document parsed;
+  parsed.Parse(output.str());
+  ASSERT_FALSE(parsed.HasParseError()) << output.str();
+  ASSERT_EQ(parsed.Size(), 1);
+  EXPECT_EQ(std::string(parsed[0u].GetString(), parsed[0u].GetStringLength()), text);
+}
+
 TEST(JSON, Serialize) {
   using namespace std;
   using namespace valhalla::baldr;
