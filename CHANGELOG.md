@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: reject durations without shape points and reject nonfinite request coordinates
    * FIXED: escape JSON object keys and control bytes without changing stream formatting
    * FIXED: publish candidate grid cache entries only after indexing succeeds
    * FIXED: preserve null matrix locations and interpolate bridge elevations between fixed anchors
