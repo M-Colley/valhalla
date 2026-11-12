@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: stop turn-lane processing from reading past the final maneuver
    * FIXED: reset reused CURL request ranges, decoding, and interruption callbacks
    * FIXED: reject durations without shape points and reject nonfinite request coordinates
    * FIXED: escape JSON object keys and control bytes without changing stream formatting
