@@ -244,6 +244,16 @@ TEST(UtilOdin, test_supported_locales) {
   }
 }
 
+TEST(UtilOdin, Utf8WordBoundaries) {
+  const std::string tokyo = "\xE6\x9D\xB1\xE4\xBA\xAC";
+  EXPECT_EQ(get_word_count(tokyo), 1);
+  EXPECT_EQ(get_word_count(tokyo + " Road"), 2);
+  EXPECT_EQ(get_word_count("..." + tokyo + "/Main-Street!"), 3);
+  EXPECT_EQ(get_word_count("\t" + tokyo + "\n" + tokyo + "\r"), 2);
+  EXPECT_EQ(get_word_count(""), 0);
+  EXPECT_EQ(get_word_count("... / \t\n"), 0);
+}
+
 TEST(UtilOdin, test_streetname_string_check) {
   std::string street_name = "Carretera de Santa Agnès de Malanyanes al Coll";
   try_get_word_count(street_name, 8);
