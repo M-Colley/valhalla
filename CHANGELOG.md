@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: pair each maneuver recost with its own starting elapsed time
    * FIXED: clear clipped geometry when left or bottom clipping removes every point
    * FIXED: classify UTF-8 street-name bytes without invalid signed character arguments
    * FIXED: decode level precision as decimal digits and preserve fractional level labels
