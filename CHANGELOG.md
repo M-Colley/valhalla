@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: classify UTF-8 street-name bytes without invalid signed character arguments
    * FIXED: decode level precision as decimal digits and preserve fractional level labels
    * FIXED: stop turn-lane processing from reading past the final maneuver
    * FIXED: reset reused CURL request ranges, decoding, and interruption callbacks
