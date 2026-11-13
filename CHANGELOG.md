@@ -3,6 +3,7 @@
 * **Bug Fix**
    * FIXED: use host build tools and avoid importing target Python modules when cross-compiling.
    * FIXED: supply numeric Windows version defaults in the MinGW time-zone implementation.
+   * FIXED: build Python bindings without data tools and with GCC 16 MinGW size optimization.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)

@@ -9,7 +9,8 @@ namespace vj = valhalla::mjolnir;
 
 namespace pyvalhalla::mjolnir {
 
-void init_util(nb::module_& m) {
+void init_util([[maybe_unused]] nb::module_& m) {
+#ifdef DATA_TOOLS
   m.def("compute_tileset_build_id", &vj::compute_tileset_build_id, nb::arg("tile_dir"),
         nb::call_guard<nb::gil_scoped_release>(),
         "Compute the tileset-wide 16-bit build id from the per-tile content hashes\n"
@@ -24,6 +25,7 @@ void init_util(nb::module_& m) {
         "tile's checksum, in place. Call this after a tool has rewritten a subset of\n"
         "tiles (e.g. adding predicted traffic) so URL clients see a changed tileset.\n\n"
         ":param tile_dir: Directory holding the .gph tiles; headers are patched in place.");
+#endif
 }
 
 } // namespace pyvalhalla::mjolnir
