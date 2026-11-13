@@ -71,10 +71,10 @@
 #    ifndef NTDDI_VERSION
 #      define NTDDI_VERSION 0x06000000
 #      ifndef _WIN32_WINNT
-#          define _WIN32_WINNT
+#          define _WIN32_WINNT 0x0600
 #      endif
 #      ifndef _WIN32_WINNT_VISTA
-#          define _WIN32_WINNT_VISTA
+#          define _WIN32_WINNT_VISTA 0x0600
 #      endif
 #    elif NTDDI_VERSION < 0x06000000
 #      warning "If this fails to compile NTDDI_VERSION may be to low. See comments above."
