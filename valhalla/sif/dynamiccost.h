@@ -1210,9 +1210,11 @@ public:
                        const float start,
                        const float end) const {
     // pass an invalid edge id to EdgeCost to avoid applying an average factor along the whole edge
-    return EdgeCost(edge, baldr::GraphId(baldr::kInvalidGraphId), tile, time_info, flow_sources) *
-           std::max(end - start, std::numeric_limits<float>::epsilon()) *
-           PartialEdgeFactor(edgeid, start, end);
+    auto cost =
+        EdgeCost(edge, baldr::GraphId(baldr::kInvalidGraphId), tile, time_info, flow_sources) *
+        std::max(end - start, std::numeric_limits<float>::epsilon());
+    cost.cost *= PartialEdgeFactor(edgeid, start, end);
+    return cost;
   };
 
   /**
@@ -1233,9 +1235,10 @@ public:
                        const baldr::graph_tile_ptr& tile,
                        const float start,
                        const float end) const {
-    return EdgeCost(edge, baldr::GraphId(baldr::kInvalidGraphId), tile) *
-           std::max(end - start, std::numeric_limits<float>::epsilon()) *
-           PartialEdgeFactor(edgeid, start, end);
+    auto cost = EdgeCost(edge, baldr::GraphId(baldr::kInvalidGraphId), tile) *
+                std::max(end - start, std::numeric_limits<float>::epsilon());
+    cost.cost *= PartialEdgeFactor(edgeid, start, end);
+    return cost;
   };
 
   /**
@@ -1332,7 +1335,8 @@ protected:
 
         // this range overlaps with the traversed fraction of the edge; figure out
         // how big the overlap is and apply the factor accordingly
-        double fraction = (range.end - std::max(static_cast<double>(start), range.start)) /
+        double fraction = (std::min(static_cast<double>(end), range.end) -
+                           std::max(static_cast<double>(start), range.start)) /
                           (static_cast<double>(end - start));
         partial_factor += fraction * range.factor;
 
