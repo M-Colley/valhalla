@@ -14,6 +14,8 @@ jobs:
             gcc-c++ \
             git \
             make \
+            mingw64-gcc \
+            mingw64-gcc-c++ \
             mingw64-curl \
             mingw64-boost \
             mingw64-protobuf \
@@ -25,6 +27,7 @@ jobs:
       - name: Checkout submodules
         shell: bash
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
@@ -41,6 +44,7 @@ jobs:
             -DENABLE_CCACHE=OFF \
             -DENABLE_TESTS=OFF \
             -DLOGGING_LEVEL=DEBUG \
+            -DProtobuf_PROTOC_EXECUTABLE=/usr/bin/protoc \
             -DBoost_PROGRAM_OPTIONS_LIBRARY=/usr/x86_64-w64-mingw32/sys-root/mingw/lib/libboost_program_options-mt-x64.dll.a \
             -DPYTHON_EXECUTABLE=/usr/x86_64-w64-mingw32/bin/python3 \
             -DPYTHON_LIBRARIES=/usr/x86_64-w64-mingw32/sys-root/mingw/lib/libpython3.9.dll.a \

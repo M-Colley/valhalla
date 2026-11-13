@@ -76,9 +76,8 @@ endif()
 # INCLUDE_PRIVATE keeps "_"-prefixed members in the output; the POST_BUILD
 # step prepends a "machine-generated" banner via an idempotent script.
 #
-# Skipped under ENABLE_SANITIZERS: nanobind_add_stub imports the compiled
-# module via a vanilla python3, which can't load an ASan-instrumented .so
-if (NOT ENABLE_SANITIZERS)
+# Stubgen imports the compiled module, requiring a native build without sanitizers.
+if (NOT ENABLE_SANITIZERS AND NOT CMAKE_CROSSCOMPILING)
   function(valhalla_python_stub module rel_pyi)
     set(_pyi ${CMAKE_CURRENT_SOURCE_DIR}/${rel_pyi})
     nanobind_add_stub(${module}_stub

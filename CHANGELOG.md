@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: use host build tools and avoid importing target Python modules when cross-compiling.
    * FIXED: clip partial-edge factor ranges and preserve actual elapsed seconds
    * FIXED: pair each maneuver recost with its own starting elapsed time
    * FIXED: clear clipped geometry when left or bottom clipping removes every point
