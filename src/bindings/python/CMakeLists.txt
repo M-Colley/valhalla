@@ -40,6 +40,13 @@ target_link_libraries(_valhalla PRIVATE
   Python::SABIModule
   $<$<BOOL:${ENABLE_COVERAGE}>:gcov>)
 
+# Imported constructors must not be decloned by GCC 16 on MinGW.
+if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16 AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_LESS 17)
+  target_compile_options(_valhalla PRIVATE -fno-declone-ctor-dtor)
+endif()
+
 if(APPLE)
   set_target_properties(_valhalla PROPERTIES INSTALL_RPATH "@loader_path")
 elseif(UNIX AND NOT APPLE)
