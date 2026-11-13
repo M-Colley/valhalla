@@ -21,6 +21,22 @@ TEST(AABB2, TestConstructor) {
   TryDefaultConstructor(b);
 }
 
+TEST(AABB2, ClipOutsideClearsShape) {
+  const AABB2<Point2> box(0, 0, 2, 2);
+  const std::vector<std::vector<Point2>> shapes = {
+      {{-3, 0.5f}, {-2, 1}, {-3, 1.5f}}, {{3, 0.5f}, {4, 1}, {3, 1.5f}},
+      {{0.5f, -3}, {1, -2}, {1.5f, -3}}, {{0.5f, 3}, {1, 4}, {1.5f, 3}},
+      {{-1, -1}, {1, -2}, {3, -1}},
+  };
+  for (const auto& points : shapes) {
+    for (const bool closed : {false, true}) {
+      auto clipped = points;
+      EXPECT_EQ(box.Clip(clipped, closed), 0);
+      EXPECT_TRUE(clipped.empty());
+    }
+  }
+}
+
 void TryIntersectsBb(const AABB2<Point2>& a, const AABB2<Point2>& b) {
   EXPECT_TRUE(a.Intersects(b)) << "Intersecting BB test failed";
 }
