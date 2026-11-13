@@ -9,6 +9,8 @@
 #include "tyr/actor.h"
 #include "tyr/serializers.h"
 
+#include <initializer_list>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -82,12 +84,12 @@ public:
   }
 
   Cost EdgeCost(const DirectedEdge* edge,
-                const baldr::GraphId& /*edgeid*/,
+                const baldr::GraphId& edgeid,
                 const graph_tile_ptr& /*tile*/,
                 const baldr::TimeInfo& /*time_info*/,
                 uint8_t& /*flow_sources*/) const override {
     float sec = static_cast<float>(edge->length());
-    return {sec / 10.0f, sec};
+    return {sec / 10.0f * static_cast<float>(EdgeFactor(edgeid)), sec};
   }
 
   Cost TransitionCost(const DirectedEdge* /*edge*/,
@@ -130,6 +132,67 @@ public:
     }
   }
 };
+
+Costing MakeLinearFactorOptions(const GraphId& id, std::initializer_list<cost_edge_t> ranges) {
+  Costing options;
+  options.set_type(Costing::auto_);
+  for (const auto& range : ranges) {
+    auto* edge = options.mutable_options()->add_cost_factor_edges();
+    edge->set_id(id);
+    edge->set_start(range.start);
+    edge->set_end(range.end);
+    edge->set_factor(range.factor);
+  }
+  return options;
+}
+
+void ExpectPartialCost(const SimpleCost& costing,
+                       const GraphId& id,
+                       float start,
+                       float end,
+                       float expected_cost,
+                       float expected_seconds) {
+  DirectedEdge edge;
+  edge.set_length(100);
+  uint8_t flow_sources = 0x80;
+  const auto timed =
+      costing.PartialEdgeCost(&edge, id, {}, TimeInfo::invalid(), flow_sources, start, end);
+  EXPECT_EQ(flow_sources, 0x80);
+  for (const auto cost : {costing.PartialEdgeCost(&edge, id, {}, start, end), timed}) {
+    EXPECT_NEAR(cost.cost, expected_cost, 0.00001f);
+    EXPECT_NEAR(cost.secs, expected_seconds, 0.00001f);
+  }
+}
+
+TEST(Matrix, PartialEdgeCostClipsRanges) {
+  const GraphId id(100, 2, 0);
+  for (const auto factor : {0.25f, 0.5f, 1.0f, 2.0f}) {
+    SimpleCost costing(MakeLinearFactorOptions(id, {{0., 1., factor}}));
+    ExpectPartialCost(costing, id, 0.f, 0.5f, 5.f * factor, 50.f);
+    ExpectPartialCost(costing, id, 0.25f, 0.5f, 2.5f * factor, 25.f);
+    ExpectPartialCost(costing, id, 0.5f, 1.f, 5.f * factor, 50.f);
+  }
+}
+
+TEST(Matrix, PartialEdgeCostKeepsElapsedTime) {
+  const GraphId id(100, 2, 0);
+  for (const auto factor : {0.25f, 2.0f}) {
+    SimpleCost costing(MakeLinearFactorOptions(id, {{0., 1., factor}}));
+    ExpectPartialCost(costing, id, 0.f, 1.f, 10.f * factor, 100.f);
+  }
+}
+
+TEST(Matrix, PartialEdgeCostDisjointRangesAndEmptyFraction) {
+  const GraphId id(100, 2, 0);
+  SimpleCost costing(MakeLinearFactorOptions(id, {{0.1, 0.3, 2.}, {0.6, 0.9, 0.5}}));
+  ExpectPartialCost(costing, id, 0.2f, 0.7f, 5.5f, 50.f);
+  ExpectPartialCost(costing, id, 0.3f, 0.6f, 3.f, 30.f);
+  ExpectPartialCost(costing, id, 0.95f, 1.f, 0.5f, 5.f);
+  ExpectPartialCost(costing, id, 0.f, 1.f, 10.5f, 100.f);
+  ExpectPartialCost(costing, GraphId(101, 2, 0), 0.f, 0.5f, 5.f, 50.f);
+  const auto epsilon = std::numeric_limits<float>::epsilon();
+  ExpectPartialCost(costing, id, 0.2f, 0.2f, 10.f * epsilon, 100.f * epsilon);
+}
 
 cost_ptr_t CreateSimpleCost(const Costing& options) {
   return std::make_shared<SimpleCost>(options);
