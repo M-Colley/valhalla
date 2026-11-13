@@ -117,12 +117,14 @@ uint32_t AABB2<coord_t>::Clip(std::vector<coord_t>& pts, const bool closed) cons
   // of the 2 vertex lists. If at any time there are no points remaining we
   // return 0 (everything outside)
   if (ClipAgainstEdge(kLeft, closed, pts, tmp_pts) == 0) {
+    pts.clear();
     return 0;
   }
   if (ClipAgainstEdge(kRight, closed, tmp_pts, pts) == 0) {
     return 0;
   }
   if (ClipAgainstEdge(kBottom, closed, pts, tmp_pts) == 0) {
+    pts.clear();
     return 0;
   }
   if (ClipAgainstEdge(kTop, closed, tmp_pts, pts) == 0) {
