@@ -4,9 +4,104 @@
 #include "sif/recost.h"
 #include "test.h"
 #include "tyr/actor.h"
+#include "tyr/serializers.h"
 #include "valhalla/worker.h"
 
 using namespace valhalla;
+
+namespace {
+Api recost_serializer_request(bool failed_first = false, bool single_model = false) {
+  Api request;
+  auto* options = request.mutable_options();
+  options->set_format(Options::json);
+  options->set_units(Options::kilometers);
+  options->set_language("en-US");
+  if (failed_first)
+    options->add_recostings()->set_name("failed");
+  options->add_recostings()->set_name("first");
+  if (!single_model)
+    options->add_recostings()->set_name("second");
+
+  const double first[] = {0, 10, 30};
+  const double second[] = {0, 25, 70};
+  auto* trip_leg = request.mutable_trip()->add_routes()->add_legs();
+  auto* directions_leg = request.mutable_directions()->add_routes()->add_legs();
+  for (int i = 0; i < 3; ++i) {
+    auto* node = trip_leg->add_node();
+    node->mutable_cost()->mutable_elapsed_cost()->set_seconds(first[i]);
+    node->mutable_cost()->mutable_elapsed_cost()->set_cost(first[i]);
+    if (i < 2) {
+      auto* edge = node->mutable_edge();
+      edge->set_length_km(1);
+      edge->set_begin_shape_index(i);
+      edge->set_end_shape_index(i + 1);
+      edge->set_end_heading(90);
+    }
+    if (failed_first)
+      node->add_recosts();
+    node->add_recosts()->mutable_elapsed_cost()->set_seconds(first[i]);
+    if (!single_model)
+      node->add_recosts()->mutable_elapsed_cost()->set_seconds(second[i]);
+
+    auto* maneuver = directions_leg->add_maneuver();
+    maneuver->set_type(i == 0  ? DirectionsLeg_Maneuver_Type_kStart
+                       : i < 2 ? DirectionsLeg_Maneuver_Type_kRight
+                               : DirectionsLeg_Maneuver_Type_kDestination);
+    maneuver->set_begin_path_index(i);
+    maneuver->set_end_path_index(i < 2 ? i + 1 : i);
+    maneuver->set_begin_shape_index(i);
+    maneuver->set_end_shape_index(i < 2 ? i + 1 : i);
+    maneuver->set_time(i < 2 ? first[i + 1] - first[i] : 0);
+    maneuver->set_length(i < 2 ? 1 : 0);
+    maneuver->set_travel_mode(kDrive);
+  }
+  directions_leg->mutable_summary()->set_time(30);
+  directions_leg->mutable_summary()->set_length(2);
+  return request;
+}
+} // namespace
+
+TEST(recosting, maneuver_times_use_matching_recost_start) {
+  auto request = recost_serializer_request();
+  rapidjson::Document json;
+  json.Parse(tyr::serializeDirections(request));
+  ASSERT_FALSE(json.HasParseError());
+  const auto& maneuvers = json["trip"]["legs"][0u]["maneuvers"];
+  ASSERT_EQ(maneuvers.Size(), 3);
+  EXPECT_DOUBLE_EQ(maneuvers[0u]["time_first"].GetDouble(), 10);
+  EXPECT_DOUBLE_EQ(maneuvers[0u]["time_second"].GetDouble(), 25);
+  EXPECT_DOUBLE_EQ(maneuvers[1]["time_first"].GetDouble(), 20);
+  EXPECT_DOUBLE_EQ(maneuvers[1]["time_second"].GetDouble(), 45);
+  EXPECT_DOUBLE_EQ(maneuvers[2]["time_first"].GetDouble(), 0);
+  EXPECT_DOUBLE_EQ(maneuvers[2]["time_second"].GetDouble(), 0);
+}
+
+TEST(recosting, maneuver_times_keep_failed_recost_alignment) {
+  auto request = recost_serializer_request(true);
+  rapidjson::Document json;
+  json.Parse(tyr::serializeDirections(request));
+  ASSERT_FALSE(json.HasParseError());
+  const auto& maneuvers = json["trip"]["legs"][0u]["maneuvers"];
+  ASSERT_EQ(maneuvers.Size(), 3);
+  for (const auto& maneuver : maneuvers.GetArray())
+    EXPECT_TRUE(maneuver["time_failed"].IsNull());
+  EXPECT_DOUBLE_EQ(maneuvers[1]["time_first"].GetDouble(), 20);
+  EXPECT_DOUBLE_EQ(maneuvers[1]["time_second"].GetDouble(), 45);
+  EXPECT_DOUBLE_EQ(maneuvers[2]["time_first"].GetDouble(), 0);
+  EXPECT_DOUBLE_EQ(maneuvers[2]["time_second"].GetDouble(), 0);
+}
+
+TEST(recosting, maneuver_times_single_model) {
+  auto request = recost_serializer_request(false, true);
+  rapidjson::Document json;
+  json.Parse(tyr::serializeDirections(request));
+  ASSERT_FALSE(json.HasParseError());
+  const auto& maneuvers = json["trip"]["legs"][0u]["maneuvers"];
+  ASSERT_EQ(maneuvers.Size(), 3);
+  EXPECT_DOUBLE_EQ(maneuvers[0u]["time_first"].GetDouble(), 10);
+  EXPECT_DOUBLE_EQ(maneuvers[1]["time_first"].GetDouble(), 20);
+  EXPECT_DOUBLE_EQ(maneuvers[2]["time_first"].GetDouble(), 0);
+}
 
 const std::unordered_map<std::string, std::string> build_config{{"mjolnir.shortcuts", "false"}};
 
