@@ -235,6 +235,15 @@ endif()
 # newer protobuf versions require a compat bool
 set(protobuf_MODULE_COMPATIBLE ON CACHE BOOL "")
 find_package(Protobuf REQUIRED)
+if(CMAKE_CROSSCOMPILING AND TARGET protobuf::protoc AND Protobuf_PROTOC_EXECUTABLE)
+  set_property(TARGET protobuf::protoc PROPERTY IMPORTED_LOCATION "${Protobuf_PROTOC_EXECUTABLE}")
+  get_property(protobuf_configs TARGET protobuf::protoc PROPERTY IMPORTED_CONFIGURATIONS)
+  foreach(protobuf_config IN LISTS protobuf_configs)
+    string(TOUPPER "${protobuf_config}" protobuf_config)
+    set_property(TARGET protobuf::protoc PROPERTY
+      "IMPORTED_LOCATION_${protobuf_config}" "${Protobuf_PROTOC_EXECUTABLE}")
+  endforeach()
+endif()
 # and turn it off again
 message(STATUS "Using protoc from ${Protobuf_PROTOC_EXECUTABLE}")
 message(STATUS "Using pbf headers from ${Protobuf_INCLUDE_DIRS}")
