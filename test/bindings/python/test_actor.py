@@ -67,15 +67,23 @@ class TestBindings(unittest.TestCase):
         # Smoke test: every action in loki.actions must be present as a
         # callable wrapper on Actor itself, not merely inherited from _Actor —
         # without a Python wrapper the dict/str input conversion doesn't apply.
-        # sources_to_targets is the JSON action name; pyvalhalla exposes it as
-        # matrix.
-        endpoints = [
-            "matrix" if a == "sources_to_targets" else a for a in default_config["loki"]["actions"]
-        ]
+        endpoints = default_config["loki"]["actions"] + ["matrix"]
         for name in endpoints:
             with self.subTest(endpoint=name):
                 self.assertIn(name, Actor.__dict__, f"Actor.{name} is missing a Python wrapper")
                 self.assertTrue(callable(getattr(self.actor, name)))
+
+    def test_matrix_alias(self):
+        query = {
+            "sources": [{"lat": 52.08813, "lon": 5.03231}],
+            "targets": [{"lat": 52.09987, "lon": 5.14913}],
+            "costing": "bicycle",
+        }
+        matrix = self.actor.matrix(query)
+        self.assertEqual(self.actor.sources_to_targets(query), matrix)
+        result = self.actor.sources_to_targets(json.dumps(query))
+        self.assertIsInstance(result, str)
+        self.assertEqual(json.loads(result), matrix)
 
     def test_route(self):
         query = {
