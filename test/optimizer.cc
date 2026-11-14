@@ -35,6 +35,16 @@ TEST(Optimizer, Basic) {
   TryOptimizer(11, costs, expected_order);
 }
 
+TEST(Optimizer, SeedRepeatsTour) {
+  constexpr uint32_t count = 20;
+  const std::vector<float> costs(count * count, 1.f);
+  Optimizer optimizer;
+  optimizer.Seed(111111);
+  const auto first = optimizer.Solve(count, costs);
+  optimizer.Seed(111111);
+  EXPECT_EQ(optimizer.Solve(count, costs), first);
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {

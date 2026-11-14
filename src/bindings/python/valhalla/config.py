@@ -1,5 +1,6 @@
 import json
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Tuple, Union
 from typing import Optional as TypingOptional
@@ -45,7 +46,7 @@ def get_config(
     :param verbose: Whether you want to see Valhalla's logs on stdout (mjolnir.logging). Default False.
     """
 
-    config = _sanitize_config(default_config.copy())
+    config = _sanitize_config(deepcopy(default_config))
 
     config["mjolnir"]["tile_dir"] = (
         "" if isinstance(tile_dir, str) and not str(tile_dir) else str(Path(tile_dir).resolve())
@@ -77,13 +78,7 @@ def parse_and_validate_config(config: Union[Path, str, dict]) -> Tuple[str, Typi
 
     # Step 1: Parse config into a file path
     if isinstance(config, dict):
-        # Create temp file for dict configs to avoid "File name too long" errors
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".json", prefix="valhalla_config_", delete=False
-        ) as f:
-            json.dump(config, f)
-            config_path = f.name
-            temp_file_path = f.name
+        config_dict = config
     elif isinstance(config, str):
         # Could be file path or JSON string
         if Path(config).is_file():
@@ -109,11 +104,12 @@ def parse_and_validate_config(config: Union[Path, str, dict]) -> Tuple[str, Typi
 
     # Step 2: Load and validate config structure
     # If config_path is a file, read it; otherwise parse as JSON string
-    if Path(config_path).is_file():
-        with open(config_path) as f:
-            config_dict = json.load(f)
-    else:
-        config_dict = json.loads(config_path)
+    if not isinstance(config, dict):
+        if Path(config_path).is_file():
+            with open(config_path) as f:
+                config_dict = json.load(f)
+        else:
+            config_dict = json.loads(config_path)
 
     # Step 3: Validate mjolnir configuration
     tile_extract_fp = config_dict.get("mjolnir", {}).get("tile_extract")
@@ -136,5 +132,18 @@ def parse_and_validate_config(config: Union[Path, str, dict]) -> Tuple[str, Typi
             f"Neither mjolnir.tile_extract ({tile_extract_path}) nor mjolnir.tile_dir ({tile_dir_path}) exists. Can't load graph."
         )
 
-    # Return config path and temp file path (None if not a temp file)
+    if isinstance(config, dict):
+        serialized = json.dumps(config)
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", suffix=".json", prefix="valhalla_config_", delete=False
+            ) as f:
+                config_path = f.name
+                temp_file_path = f.name
+                f.write(serialized)
+        except BaseException:
+            if temp_file_path:
+                Path(temp_file_path).unlink(missing_ok=True)
+            raise
+
     return (config_path, temp_file_path)

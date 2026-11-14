@@ -1,13 +1,105 @@
 import json
+import os
 import sys
+from io import BytesIO
 from pathlib import Path
 import unittest
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+from urllib.error import URLError
 
 import valhalla_build_elevation
 from valhalla_build_elevation import Tile
 
 # this test suite depends on the utrecht tiles data
 TILE_DIR = Path('test/data/utrecht_tiles')
+
+
+class TestElevationDownload(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX file permissions")
+    def test_download_respects_umask(self):
+        tile = Tile("N00E000.hgt", "N00")
+        with TemporaryDirectory() as tmp, patch("valhalla_build_elevation.sleep"):
+            with patch("valhalla_build_elevation.request.urlopen", return_value=BytesIO(b"complete")):
+                previous = os.umask(0o027)
+                try:
+                    self.assertTrue(
+                        valhalla_build_elevation.download(
+                            tile, tmp, valhalla_build_elevation.TileCompression.GZIP
+                        )
+                    )
+                finally:
+                    os.umask(previous)
+            path = Path(tmp) / tile.dir / (tile.name + ".gz")
+            self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+
+    def test_failed_download_can_retry(self):
+        class FailedResponse(BytesIO):
+            def read(self, *args):
+                raise URLError("connection lost")
+
+        tile = Tile("N00E000.hgt", "N00")
+        compression = valhalla_build_elevation.TileCompression.GZIP
+        with TemporaryDirectory() as tmp, patch("valhalla_build_elevation.sleep"):
+            with patch(
+                "valhalla_build_elevation.request.urlopen", side_effect=lambda _: FailedResponse()
+            ):
+                self.assertFalse(valhalla_build_elevation.download(tile, tmp, compression))
+            path = Path(tmp) / tile.dir / (tile.name + compression.extension)
+            self.assertFalse(path.exists())
+
+            with patch("valhalla_build_elevation.request.urlopen", return_value=BytesIO(b"complete")):
+                self.assertTrue(valhalla_build_elevation.download(tile, tmp, compression))
+            self.assertEqual(path.read_bytes(), b"complete")
+            self.assertEqual(list(path.parent.iterdir()), [path])
+
+    def test_interrupted_read_does_not_publish_file(self):
+        class FailedResponse(BytesIO):
+            def read(self, *args):
+                raise ConnectionResetError("connection reset")
+
+        tile = Tile("N00E000.hgt", "N00")
+        with TemporaryDirectory() as tmp, patch("valhalla_build_elevation.sleep"):
+            with patch("valhalla_build_elevation.request.urlopen", return_value=FailedResponse()):
+                with self.assertRaises(ConnectionResetError):
+                    valhalla_build_elevation.download(
+                        tile, tmp, valhalla_build_elevation.TileCompression.GZIP
+                    )
+            self.assertEqual(list((Path(tmp) / tile.dir).iterdir()), [])
+
+    def test_corrupt_download_removes_temporary_files(self):
+        tile = Tile("N00E000.hgt", "N00")
+        with TemporaryDirectory() as tmp, patch("valhalla_build_elevation.sleep"):
+            with patch(
+                "valhalla_build_elevation.request.urlopen",
+                side_effect=lambda _: BytesIO(b"invalid gzip"),
+            ):
+                self.assertFalse(
+                    valhalla_build_elevation.download(
+                        tile, tmp, valhalla_build_elevation.TileCompression.UNCOMPRESSED
+                    )
+                )
+            self.assertEqual(list((Path(tmp) / tile.dir).iterdir()), [])
+
+
+class TestElevationPolygonHoles(unittest.TestCase):
+    def test_polygon_holes_exclude_tiles(self):
+        outer = [[0, 0], [5, 0], [5, 5], [0, 5], [0, 0]]
+        hole = [[1, 1], [4, 1], [4, 4], [1, 4], [1, 1]]
+        for geometry in (
+            {"type": "Polygon", "coordinates": [outer, hole]},
+            {"type": "MultiPolygon", "coordinates": [[outer, hole]]},
+        ):
+            with self.subTest(type=geometry["type"]), TemporaryDirectory() as tmp:
+                geojson = {"type": "FeatureCollection", "features": [{"geometry": geometry}]}
+                geojson_path = Path(tmp) / "region.geojson"
+                geojson_path.write_text(json.dumps(geojson))
+
+                tiles = valhalla_build_elevation.get_tiles_with_geojson(Path(tmp))
+
+                self.assertNotIn(Tile("N02E002.hgt", "N02"), tiles)
+                self.assertIn(Tile("N00E000.hgt", "N00"), tiles)
+                self.assertIn(Tile("N02E000.hgt", "N02"), tiles)
 
 
 class TestBuildElevation(unittest.TestCase):

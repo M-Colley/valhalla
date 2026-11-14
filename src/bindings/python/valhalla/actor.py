@@ -43,10 +43,12 @@ class Actor(_Actor):
         # Use shared validation function
         config_path, temp_file_path = parse_and_validate_config(config)
         self._config_path = config_path
-        self._temp_file_path = temp_file_path  # Keep reference to prevent cleanup
 
-        # Call C++ constructor
-        super(Actor, self).__init__(self._config_path)
+        try:
+            super(Actor, self).__init__(self._config_path)
+        finally:
+            if temp_file_path:
+                Path(temp_file_path).unlink(missing_ok=True)
 
     @dict_or_str
     def route(self, req: Union[str, dict]) -> Union[str, dict]:

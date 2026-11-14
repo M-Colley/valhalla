@@ -15,11 +15,11 @@ const uint32_t kMaxEdgeElevationSampling = 32;
 // NO_DATA elevation value (occurs where no elevation data exists, e.g. high latitudes)
 constexpr int32_t ELEVATION_NO_DATA_VALUE = -32768;
 
-// Use fixed precision (0.25 degrees)
+// Use fixed precision (0.25 meters)
 const double kElevationPrecision = 0.25f;
 const double kInvElevationPrecision = 4.0;
 inline int32_t to_fixed_precision(const double v) {
-  return static_cast<int32_t>((v * kInvElevationPrecision) + 0.5);
+  return static_cast<int32_t>(std::round(v * kInvElevationPrecision));
 }
 inline float from_fixed_precision(const int8_t v) {
   return (v * kElevationPrecision);
@@ -45,7 +45,7 @@ inline double sampling_interval(const double length) {
  * @return Returns the number of encoded elevations.
  */
 inline uint32_t encoded_elevation_count(const uint32_t length) {
-  return static_cast<uint32_t>(std::round(length / sampling_interval(length))) - 1;
+  return length / kMaxEdgeElevationSampling;
 }
 
 /**
@@ -63,7 +63,8 @@ inline uint32_t encoded_elevation_count(const uint32_t length) {
 inline std::vector<int8_t> encode_elevation(const std::vector<double>& elevation, bool& error) {
   // Return empty encoded vector if first or last value is NO_DATA
   std::vector<int8_t> encoding;
-  if (elevation.front() == ELEVATION_NO_DATA_VALUE || elevation.back() == ELEVATION_NO_DATA_VALUE) {
+  if (elevation.size() <= 2 || elevation.front() == ELEVATION_NO_DATA_VALUE ||
+      elevation.back() == ELEVATION_NO_DATA_VALUE) {
     return encoding;
   }
 

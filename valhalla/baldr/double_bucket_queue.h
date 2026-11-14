@@ -138,7 +138,7 @@ public:
     // if old cost and the new cost are in the same buckets.
     bucket_t& prevbucket = get_bucket((*labelcontainer_)[label].sortcost());
     bucket_t& newbucket = get_bucket(newcost);
-    if (prevbucket != newbucket) {
+    if (&prevbucket != &newbucket) {
       // Add label to newbucket and remove from previous bucket
       newbucket.push_back(label);
       prevbucket.erase(std::remove(prevbucket.begin(), prevbucket.end(), label));

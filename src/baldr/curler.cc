@@ -83,9 +83,22 @@ struct curler_t::pimpl_t {
                 "Failed to set connect timeout ");
   }
 
+  void set_interrupt(const interrupt_t* interrupt) const {
+    assert_curl(curl_easy_setopt(connection.get(), CURLOPT_XFERINFOFUNCTION,
+                                 interrupt ? progress_callback : nullptr),
+                "Failed to set progress callback ");
+    assert_curl(curl_easy_setopt(connection.get(), CURLOPT_XFERINFODATA, interrupt),
+                "Failed to set progress data ");
+    assert_curl(curl_easy_setopt(connection.get(), CURLOPT_NOPROGRESS, interrupt ? 0L : 1L),
+                "Failed to set progress reporting ");
+  }
+
   HEAD_response_t head(const std::string& url, header_mask_t header_mask) {
     const bool wants_last_modified = header_mask & tile_getter_t::kHeaderLastModified;
 
+    set_interrupt(nullptr);
+    assert_curl(curl_easy_setopt(connection.get(), CURLOPT_RANGE, nullptr),
+                "Failed to clear HTTP Range");
     assert_curl(curl_easy_setopt(connection.get(), CURLOPT_URL, url.c_str()),
                 "Failed to set URL for HEAD");
     assert_curl(curl_easy_setopt(connection.get(), CURLOPT_NOBODY, 1L),
@@ -117,21 +130,15 @@ struct curler_t::pimpl_t {
     curl_easy_setopt(connection.get(), CURLOPT_HTTPGET, 1L);
     curl_easy_setopt(connection.get(), CURLOPT_NOBODY, 0L);
 
-    if (interrupt) {
-      assert_curl(curl_easy_setopt(connection.get(), CURLOPT_XFERINFOFUNCTION, progress_callback),
-                  "Failed to set custom progress callback ");
-      assert_curl(curl_easy_setopt(connection.get(), CURLOPT_XFERINFODATA, interrupt),
-                  "Failed to set custom progress data");
-      assert_curl(curl_easy_setopt(connection.get(), CURLOPT_NOPROGRESS, 0L),
-                  "Failed to turn the progress callback on ");
-    }
-
     // are we doing a range request to load tiles from a tar?
     if (range_size) {
       const std::string range =
           std::to_string(range_offset) + "-" + std::to_string(range_offset + range_size - 1);
       assert_curl(curl_easy_setopt(connection.get(), CURLOPT_RANGE, range.c_str()),
                   "Failed to set HTTP Range");
+    } else {
+      assert_curl(curl_easy_setopt(connection.get(), CURLOPT_RANGE, nullptr),
+                  "Failed to clear HTTP Range");
     }
 
     // add basic auth if it's supplied
@@ -145,10 +152,8 @@ struct curler_t::pimpl_t {
                 "Failed to set content encoding header ");
     // Curler do uncompressing by default. So if user asks for compressed data,
     // we just disable default uncompressing
-    if (gzipped) {
-      assert_curl(curl_easy_setopt(connection.get(), CURLOPT_HTTP_CONTENT_DECODING, 0L),
-                  "Failed to disable decoding ");
-    }
+    assert_curl(curl_easy_setopt(connection.get(), CURLOPT_HTTP_CONTENT_DECODING, gzipped ? 0L : 1L),
+                "Failed to set HTTP content decoding ");
     // set the user agent
     if (!user_agent.empty())
       assert_curl(curl_easy_setopt(connection.get(), CURLOPT_USERAGENT, user_agent.c_str()),
@@ -160,16 +165,19 @@ struct curler_t::pimpl_t {
     assert_curl(curl_easy_setopt(connection.get(), CURLOPT_WRITEDATA, &result.bytes_),
                 "Failed to set write data ");
     // get the url
-    assert_curl(curl_easy_perform(connection.get()), "Failed to get URL ");
+    set_interrupt(interrupt);
+    const auto code = curl_easy_perform(connection.get());
+    set_interrupt(nullptr);
+    assert_curl(code, "Failed to get URL ");
     // grab the return code
     curl_easy_getinfo(connection.get(), CURLINFO_RESPONSE_CODE, &result.http_code_);
     // hand over the results
     return result;
   }
 
-  void assert_curl(CURLcode code, const std::string& msg) const {
+  void assert_curl(CURLcode code, const char* msg) const {
     if (code != CURLE_OK) {
-      std::string what = msg + error;
+      std::string what = std::string(msg) + error;
       LOG_ERROR(what);
       throw std::runtime_error(what);
     }

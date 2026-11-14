@@ -16,11 +16,14 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include <cmath>
 #include <fstream>
 #include <istream>
+#include <limits>
 #include <locale>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 namespace {
@@ -104,7 +107,21 @@ get_optional(V&& v, const char* source) {
     return static_cast<T>(ptr->GetUint64());
   }
   if (ptr->IsDouble()) {
-    return static_cast<T>(ptr->GetDouble());
+    const double value = ptr->GetDouble();
+    if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
+      const double truncated = std::trunc(value);
+      // The exclusive power-of-two bound stays exact even when T's maximum does not.
+      const double upper_bound = std::ldexp(1.0, std::numeric_limits<T>::digits);
+      if (!(truncated >= static_cast<double>(std::numeric_limits<T>::lowest()) &&
+            truncated < upper_bound)) {
+        return boost::none;
+      }
+    } else if constexpr (std::is_floating_point_v<T>) {
+      if (!(value >= std::numeric_limits<T>::lowest() && value <= std::numeric_limits<T>::max())) {
+        return boost::none;
+      }
+    }
+    return static_cast<T>(value);
   }
   // give up
   return boost::none;
@@ -323,7 +340,9 @@ public:
   }
 
   template <typename K, typename V> inline void operator()(const K& key, const V& value) {
-    if constexpr (is_string_like_v<K>) {
+    if constexpr (std::is_same_v<K, std::string_view>) {
+      writer.String(key.empty() ? "" : key.data(), key.size());
+    } else if constexpr (is_string_like_v<K>) {
       writer.String(key);
     } else {
       static_assert(always_false<K>, "Unsupported key type");
@@ -339,7 +358,7 @@ public:
     } else if constexpr (std::is_same_v<V, int64_t> || std::is_same_v<V, long long>) {
       writer.Int64(value);
     } else if constexpr (std::is_same_v<V, double> || std::is_same_v<V, float>) {
-      if (std::isnan(value)) {
+      if (!std::isfinite(value)) {
         writer.Null();
       } else {
         writer.Double(value);
@@ -349,7 +368,7 @@ public:
     } else if constexpr (std::is_same_v<V, std::nullptr_t>) {
       writer.Null();
     } else if constexpr (std::is_same_v<V, std::string_view>) {
-      writer.String(value.data(), value.size());
+      writer.String(value.empty() ? "" : value.data(), value.size());
     } else if constexpr (std::is_same_v<V, const char*>) {
       writer.String(value, std::strlen(value));
     } else if constexpr (is_string_like_v<V>) {
@@ -360,20 +379,27 @@ public:
   }
 
   template <typename V> inline void operator()(const V& value) {
-    if constexpr (std::is_same_v<V, int> || std::is_same_v<V, int32_t>) {
+    if constexpr (std::is_same_v<V, int> || std::is_same_v<V, int32_t> || std::is_same_v<V, long>) {
       writer.Int64(static_cast<int64_t>(value));
-    } else if constexpr (std::is_same_v<V, unsigned int> || std::is_same_v<V, uint32_t>) {
+    } else if constexpr (std::is_same_v<V, unsigned int> || std::is_same_v<V, uint32_t> ||
+                         std::is_same_v<V, unsigned long>) {
       writer.Uint64(static_cast<uint64_t>(value));
-    } else if constexpr (std::is_same_v<V, uint64_t>) {
+    } else if constexpr (std::is_same_v<V, uint64_t> || std::is_same_v<V, unsigned long long>) {
       writer.Uint64(value);
-    } else if constexpr (std::is_same_v<V, int64_t>) {
+    } else if constexpr (std::is_same_v<V, int64_t> || std::is_same_v<V, long long>) {
       writer.Int64(value);
     } else if constexpr (std::is_same_v<V, double> || std::is_same_v<V, float>) {
-      writer.Double(value);
+      if (!std::isfinite(value)) {
+        writer.Null();
+      } else {
+        writer.Double(value);
+      }
     } else if constexpr (std::is_same_v<V, bool>) {
       writer.Bool(value);
     } else if constexpr (std::is_same_v<V, std::nullptr_t>) {
       writer.Null();
+    } else if constexpr (std::is_same_v<V, std::string_view>) {
+      writer.String(value.empty() ? "" : value.data(), value.size());
     } else if constexpr (is_string_like_v<V>) {
       writer.String(value);
     } else {

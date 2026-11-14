@@ -8,6 +8,7 @@
 #include "mjolnir/util.h"
 #include "skadi/sample.h"
 #include "test.h"
+#include "tyr/serializers.h"
 
 #include <gtest/gtest.h>
 
@@ -21,6 +22,55 @@ using namespace valhalla;
 using namespace valhalla::gurka;
 
 const std::string workdir = "test/data/gurka_elevation";
+
+TEST(Standalone, BridgeElevationInterpolation) {
+  std::vector<std::pair<uint32_t, uint32_t>> bridges{{1, 3}};
+  std::vector<float> elevation{0, 99, 99, 99, 40};
+  tyr::update_bridge_elevations(elevation, bridges);
+  EXPECT_EQ(elevation, (std::vector<float>{0, 10, 20, 30, 40}));
+
+  elevation = {40, 99, 99, 99, 0};
+  tyr::update_bridge_elevations(elevation, bridges);
+  EXPECT_EQ(elevation, (std::vector<float>{40, 30, 20, 10, 0}));
+}
+
+TEST(Standalone, BridgeElevationBoundaryAnchors) {
+  for (const auto& bridge : std::vector<std::pair<uint32_t, uint32_t>>{{0, 2}, {1, 3}, {0, 3}}) {
+    std::vector<float> elevation{0, 99, 99, 30};
+    std::vector<std::pair<uint32_t, uint32_t>> bridges{bridge};
+    tyr::update_bridge_elevations(elevation, bridges);
+    EXPECT_EQ(elevation, (std::vector<float>{0, 10, 20, 30}));
+  }
+}
+
+TEST(Standalone, BridgeElevationSingleAndInvalidRanges) {
+  std::vector<float> elevation{0, 99, 20};
+  std::vector<std::pair<uint32_t, uint32_t>> bridges{{1, 1}};
+  tyr::update_bridge_elevations(elevation, bridges);
+  EXPECT_EQ(elevation, (std::vector<float>{0, 10, 20}));
+
+  bridges = {{2, 1}, {0, 3}, {9, 12}};
+  tyr::update_bridge_elevations(elevation, bridges);
+  EXPECT_EQ(elevation, (std::vector<float>{0, 10, 20}));
+  elevation.clear();
+  bridges = {{0, 0}};
+  tyr::update_bridge_elevations(elevation, bridges);
+  EXPECT_TRUE(elevation.empty());
+}
+
+TEST(Standalone, ConsecutiveBridgeElevation) {
+  TripLeg leg;
+  const std::vector<std::pair<float, float>> elevations{{0, 10}, {10, 99}, {99, 30}, {30, 40}};
+  for (size_t i = 0; i < elevations.size(); ++i) {
+    auto* edge = leg.add_node()->mutable_edge();
+    edge->set_elevation_sampling_interval(10);
+    edge->add_elevation(elevations[i].first);
+    edge->add_elevation(elevations[i].second);
+    edge->set_bridge(i == 1 || i == 2);
+  }
+  leg.add_node();
+  EXPECT_EQ(tyr::get_elevation(leg, 10), (std::vector<float>{0, 10, 20, 30, 40}));
+}
 
 std::string json_escape(const std::string& unescaped) {
   std::stringstream ss;

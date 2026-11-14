@@ -3605,6 +3605,8 @@ void ManeuversBuilder::ProcessTurnLanes(std::list<Maneuver>& maneuvers) {
 
   // Walk the maneuvers to activate turn lanes
   while (curr_man != maneuvers.end()) {
+    const auto next_maneuver_type =
+        next_man != maneuvers.end() ? next_man->type() : DirectionsLeg_Maneuver_Type_kNone;
 
     // Only process driving maneuvers
     if (curr_man->travel_mode() == TravelMode::kDrive) {
@@ -3619,7 +3621,7 @@ void ManeuversBuilder::ProcessTurnLanes(std::list<Maneuver>& maneuvers) {
                (curr_man->type() == DirectionsLeg_Maneuver_Type_kStayRight) ||
                (curr_man->type() == DirectionsLeg_Maneuver_Type_kStayStraight)))) {
           prev_edge->ActivateTurnLanes(GetExpectedTurnLaneDirection(prev_edge, *(curr_man)),
-                                       curr_man->length(), curr_man->type(), next_man->type());
+                                       curr_man->length(), curr_man->type(), next_maneuver_type);
         }
       }
 
@@ -3664,7 +3666,7 @@ void ManeuversBuilder::ProcessTurnLanes(std::list<Maneuver>& maneuvers) {
                 !has_directional_intersecting_edge && turn_lane_direction != kTurnLaneNone) {
               // Activate lanes matching upcoming turn direction
               prev_edge->ActivateTurnLanes(turn_lane_direction, curr_man->length(), curr_man->type(),
-                                           next_man->type());
+                                           next_maneuver_type);
             } else {
               // Activate through lanes
               prev_edge->ActivateTurnLanes(kTurnLaneThrough, remaining_step_distance,

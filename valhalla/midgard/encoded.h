@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -48,7 +49,7 @@ public:
     auto lon_diff = read_varint();
     lat += zigzag_decode(lat_diff);
     lon += zigzag_decode(lon_diff);
-    return Point(double(lon) * prec, double(lat) * prec);
+    return Point(double(static_cast<int32_t>(lon)) * prec, double(static_cast<int32_t>(lat)) * prec);
   }
   bool empty() const {
     return begin == end;
@@ -57,18 +58,21 @@ public:
 private:
   const char* begin;
   const char* end;
-  int32_t lat = 0;
-  int32_t lon = 0;
+  uint32_t lat = 0;
+  uint32_t lon = 0;
   double prec;
 
   uint32_t read_varint() noexcept(false) {
     uint32_t byte, shift = 0, result = 0;
     do {
-      if (empty()) {
+      if (empty() || shift >= std::numeric_limits<uint32_t>::digits) {
         throw std::runtime_error("Bad encoded polyline");
       }
       // take the least significant 7 bits shifted into place
-      byte = static_cast<uint32_t>(*begin++);
+      byte = static_cast<unsigned char>(*begin++);
+      if ((byte & 0x7f) > (std::numeric_limits<uint32_t>::max() >> shift)) {
+        throw std::runtime_error("Bad encoded polyline");
+      }
       result |= (byte & 0x7f) << shift;
       shift += 7;
       // if the most significant bit is set there is more to this number
@@ -84,7 +88,7 @@ public:
   value_type pop() noexcept(false) {
     auto diff = read_varint();
     value += zigzag_decode(diff);
-    return value;
+    return static_cast<value_type>(value);
   }
   bool empty() const {
     return begin == end;
@@ -93,18 +97,21 @@ public:
 private:
   const char* begin;
   const char* end;
-  value_type value = 0;
-
   using uvalue_t = typename std::make_unsigned<value_type>::type;
+  uvalue_t value = 0;
 
   uvalue_t read_varint() noexcept(false) {
-    uvalue_t byte, shift = 0, result = 0;
+    uvalue_t byte, result = 0;
+    uint32_t shift = 0;
     do {
-      if (empty()) {
+      if (empty() || shift >= std::numeric_limits<uvalue_t>::digits) {
         throw std::runtime_error("Bad varint offset encoding");
       }
       // take the least significant 7 bits shifted into place
       byte = static_cast<uvalue_t>(static_cast<unsigned char>(*begin++));
+      if ((byte & 0x7f) > (std::numeric_limits<uvalue_t>::max() >> shift)) {
+        throw std::runtime_error("Bad varint offset encoding");
+      }
       result |= (byte & 0x7f) << shift;
       shift += 7;
       // if the most significant bit is set there is more to this number
@@ -123,7 +130,7 @@ public:
     auto lon_diff = read_varint();
     lat += zigzag_decode(lat_diff);
     lon += zigzag_decode(lon_diff);
-    return Point(double(lon) * prec, double(lat) * prec);
+    return Point(double(static_cast<int32_t>(lon)) * prec, double(static_cast<int32_t>(lat)) * prec);
   }
   bool empty() const {
     return begin == end;
@@ -132,19 +139,26 @@ public:
 private:
   const char* begin;
   const char* end;
-  int32_t lat = 0;
-  int32_t lon = 0;
+  uint32_t lat = 0;
+  uint32_t lon = 0;
   double prec;
 
   uint32_t read_varint() noexcept(false) {
     // grab each 5 bits and mask it in where it belongs using the shift
     uint32_t byte, shift = 0, result = 0;
     do {
-      if (empty()) {
+      if (empty() || shift >= std::numeric_limits<uint32_t>::digits) {
         throw std::runtime_error("Bad encoded polyline");
       }
       // take the least significant 5 bits shifted into place
-      byte = uint32_t(*begin++) - 63;
+      byte = static_cast<unsigned char>(*begin++);
+      if (byte < 63 || byte > 126) {
+        throw std::runtime_error("Bad encoded polyline");
+      }
+      byte -= 63;
+      if ((byte & 0x1f) > (std::numeric_limits<uint32_t>::max() >> shift)) {
+        throw std::runtime_error("Bad encoded polyline");
+      }
       result |= (byte & 0x1f) << shift;
       shift += 5;
       // if the most significant bit is set there is more to this number
@@ -274,8 +288,8 @@ std::string encode(const container_t& points, const int precision = ENCODE_PRECI
     auto lon = static_cast<int32_t>(round(static_cast<double>(p.first) * precision));
     auto lat = static_cast<int32_t>(round(static_cast<double>(p.second) * precision));
     // encode each coordinate, lat first for some reason
-    write_varint(zigzag_encode(lat - last_lat));
-    write_varint(zigzag_encode(lon - last_lon));
+    write_varint(zigzag_encode(static_cast<int32_t>(uint32_t(lat) - uint32_t(last_lat))));
+    write_varint(zigzag_encode(static_cast<int32_t>(uint32_t(lon) - uint32_t(last_lon))));
     // remember the last one we encountered
     last_lon = lon;
     last_lat = lat;
@@ -317,8 +331,8 @@ std::string encode7(const container_t& points, const int precision = ENCODE_PREC
     auto lon = static_cast<int32_t>(round(static_cast<double>(p.first) * precision));
     auto lat = static_cast<int32_t>(round(static_cast<double>(p.second) * precision));
     // encode each coordinate, lat first for some reason
-    write_varint(zigzag_encode(lat - last_lat));
-    write_varint(zigzag_encode(lon - last_lon));
+    write_varint(zigzag_encode(static_cast<int32_t>(uint32_t(lat) - uint32_t(last_lat))));
+    write_varint(zigzag_encode(static_cast<int32_t>(uint32_t(lon) - uint32_t(last_lon))));
     // remember the last one we encountered
     last_lon = lon;
     last_lat = lat;
@@ -346,7 +360,8 @@ template <class container_t> std::string encode7int(const container_t& values) {
   // this is an offset encoding so we remember the last value we saw
   value_t last_value = 0;
   for (const auto& value : values) {
-    auto diff = static_cast<typename std::make_signed<value_t>::type>(value - last_value);
+    auto diff = static_cast<typename std::make_signed<value_t>::type>(
+        static_cast<uvalue_t>(value) - static_cast<uvalue_t>(last_value));
     write_varint(zigzag_encode(diff));
     last_value = value;
   }

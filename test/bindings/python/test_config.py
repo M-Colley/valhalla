@@ -5,8 +5,11 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from unittest.mock import Mock, patch
 
 from valhalla.config import get_config, parse_and_validate_config
+from valhalla.valhalla_build_config import Optional
 
 
 class TestParseAndValidateConfig(unittest.TestCase):
@@ -197,6 +200,29 @@ class TestParseAndValidateConfig(unittest.TestCase):
             parse_and_validate_config(config)
         self.assertIn("mjolnir.tile_extract and mjolnir.tile_dir are missing", str(exc.exception))
 
+    def test_invalid_dict_does_not_leave_temporary_files(self):
+        with TemporaryDirectory() as tmp, patch("valhalla.config.tempfile.tempdir", tmp):
+            for config, error in (
+                ({}, AttributeError),
+                ({"mjolnir": {"tile_dir": str(Path(tmp) / "missing")}}, FileNotFoundError),
+                ({"mjolnir": {"tile_dir": tmp}, "invalid": object()}, TypeError),
+            ):
+                with self.subTest(error=error), self.assertRaises(error):
+                    parse_and_validate_config(config)
+                self.assertEqual(list(Path(tmp).glob("valhalla_config_*.json")), [])
+
+    def test_failed_config_write_removes_temporary_file(self):
+        def fail_write(*args, **kwargs):
+            file = NamedTemporaryFile(*args, **kwargs)
+            file.write = Mock(side_effect=OSError("write failed"))
+            return file
+
+        with TemporaryDirectory() as tmp, patch("valhalla.config.tempfile.tempdir", tmp):
+            with patch("valhalla.config.tempfile.NamedTemporaryFile", side_effect=fail_write):
+                with self.assertRaisesRegex(OSError, "write failed"):
+                    parse_and_validate_config({"mjolnir": {"tile_dir": tmp}})
+            self.assertEqual(list(Path(tmp).glob("valhalla_config_*.json")), [])
+
 
 class TestGetConfig(unittest.TestCase):
     """Test suite for get_config function."""
@@ -218,6 +244,21 @@ class TestGetConfig(unittest.TestCase):
         )
         self.assertEqual(get_config(tile_extract="", tile_dir="", verbose=False)["logging"]["type"], "")
 
+    def test_get_config_calls_are_independent(self):
+        first = get_config(tile_extract="", tile_dir="", verbose=True)
+        first["loki"]["actions"].clear()
+        second = get_config(tile_extract="", tile_dir="", verbose=False)
+
+        self.assertEqual(first["logging"]["type"], "std_out")
+        self.assertTrue(second["loki"]["actions"])
+
+    def test_get_config_preserves_defaults(self):
+        optional = Optional(str)
+        defaults = {"mjolnir": {}, "logging": {}, "optional": optional}
+        with patch("valhalla.config.default_config", defaults):
+            get_config(tile_extract="", tile_dir="")
+
+        self.assertEqual(defaults, {"mjolnir": {}, "logging": {}, "optional": optional})
     def test_get_config_with_only_one_tile_source(self):
         """A missing optional source must not prevent using the other source."""
         with tempfile.TemporaryDirectory() as temp_dir:

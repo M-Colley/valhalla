@@ -1,8 +1,11 @@
 #include "baldr/tilehierarchy.h"
+#include "../src/bindings/shared/tile_id_utils.h"
 #include "baldr/graphid.h"
 #include "midgard/pointll.h"
 
 #include <gtest/gtest.h>
+
+#include <limits>
 
 using namespace std;
 using namespace valhalla::baldr;
@@ -65,6 +68,36 @@ TEST(TileHierarchy, parent) {
   EXPECT_EQ(level0, GraphId(90 * 1 + 1, 0, 0));
   auto invalid = TileHierarchy::parent(level0);
   EXPECT_EQ(invalid, GraphId(kInvalidGraphId));
+}
+
+TEST(TileHierarchy, RingAtWorldBoundary) {
+  for (const auto& ring : std::vector<std::vector<PointLL>>{{{0, 90}, {1, 90}, {2, 90}},
+                                                            {{180, 0}, {180, 1}, {180, 2}}}) {
+    EXPECT_TRUE(valhalla::bindings::get_tile_ids_from_ring(ring, {1}).empty());
+  }
+}
+
+TEST(TileHierarchy, InvalidBindingCoordinates) {
+  const auto nan = std::numeric_limits<double>::quiet_NaN();
+  const auto infinity = std::numeric_limits<double>::infinity();
+  for (const auto value : {nan, infinity, -infinity}) {
+    EXPECT_THROW(valhalla::bindings::check_coord(value, 0, value, 0), std::invalid_argument);
+    EXPECT_THROW(valhalla::bindings::check_coord(0, value, 0, value), std::invalid_argument);
+    EXPECT_THROW(valhalla::bindings::get_tile_ids_from_ring({{0, 0}, {1, 0}, {value, 1}}, {1}),
+                 std::invalid_argument);
+  }
+}
+
+TEST(TileHierarchy, ReversedOutOfBoundsCoordinates) {
+  const std::vector<AABB2<PointLL>> boxes = {{200, 0, 100, 1},
+                                             {-100, 0, -200, 1},
+                                             {0, 100, 1, 80},
+                                             {0, -80, 1, -100}};
+  for (const auto& box : boxes) {
+    EXPECT_THROW(valhalla::bindings::check_coord(box.minx(), box.miny(), box.maxx(), box.maxy()),
+                 std::invalid_argument);
+  }
+  EXPECT_NO_THROW(valhalla::bindings::check_coord(179, -1, -179, 1));
 }
 
 } // namespace

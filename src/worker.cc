@@ -17,6 +17,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <cpp-statsd-client/StatsdClient.hpp>
 
+#include <cmath>
 #include <sstream>
 
 using namespace valhalla;
@@ -197,7 +198,7 @@ void parse_location(valhalla::Location* location,
     throw std::runtime_error{"lat is missing"};
   };
 
-  if (*lat < -90.0 || *lat > 90.0) {
+  if (!std::isfinite(*lat) || *lat < -90.0 || *lat > 90.0) {
     throw std::runtime_error("Latitude must be in the range [-90, 90] degrees");
   }
 
@@ -208,6 +209,9 @@ void parse_location(valhalla::Location* location,
   if (!lon) {
     throw std::runtime_error{"lon is missing"};
   };
+  if (!std::isfinite(*lon)) {
+    throw std::runtime_error("Longitude must be finite");
+  }
 
   lon = midgard::circular_range_clamp<double>(*lon, -180, 180);
   location->mutable_ll()->set_lat(*lat);
@@ -284,7 +288,7 @@ void parse_location(valhalla::Location* location,
   lon = rapidjson::get_optional<double>(r_loc, "/display_lon");
   if (location->has_display_ll() && location->display_ll().has_lng_case())
     lon = location->display_ll().lng();
-  if (lat && lon && *lat >= -90.0 && *lat <= 90.0) {
+  if (lat && lon && *lat >= -90.0 && *lat <= 90.0 && std::isfinite(*lon)) {
     lon = midgard::circular_range_clamp<double>(*lon, -180, 180);
     location->mutable_display_ll()->set_lat(*lat);
     location->mutable_display_ll()->set_lng(*lon);
@@ -1013,7 +1017,7 @@ void from_json(rapidjson::Document& doc, Options::Action action, Api& api) {
   auto durations = rapidjson::get_optional<rapidjson::Value::ConstArray>(doc, "/durations");
   if (durations) {
     // Make sure durations is sized appropriately
-    if (options.shape_size() > 0 && durations->Size() != (unsigned int)options.shape_size() - 1) {
+    if (options.shape_size() == 0 || durations->Size() != (unsigned int)options.shape_size() - 1) {
       throw valhalla_exception_t{136};
     }
 

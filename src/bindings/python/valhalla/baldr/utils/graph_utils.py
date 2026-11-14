@@ -40,7 +40,9 @@ class GraphUtils(_GraphUtils):
         # Use shared validation function
         config_path, temp_file_path = parse_and_validate_config(config)
         self._config_path = config_path
-        self._temp_file_path = temp_file_path  # Keep reference to prevent cleanup
 
-        # Call C++ constructor with validated config file path
-        super().__init__(self._config_path)
+        try:
+            super().__init__(self._config_path)
+        finally:
+            if temp_file_path:
+                Path(temp_file_path).unlink(missing_ok=True)

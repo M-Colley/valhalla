@@ -152,8 +152,12 @@ public:
 
 protected:
   inline uint32_t get_offset(const GraphId& graphid) const {
-    return graphid.level() < 4 ? index_offsets_[graphid.level()] + graphid.tileid()
-                               : cache_indices_.size();
+    const auto level = graphid.level();
+    if (level >= 4)
+      return cache_indices_.size();
+    const auto offset = index_offsets_[level] + graphid.tileid();
+    const auto end = level < 3 ? index_offsets_[level + 1] : cache_indices_.size();
+    return offset < end ? offset : cache_indices_.size();
   }
   inline uint32_t get_index(const GraphId& graphid) const {
     auto offset = get_offset(graphid);
@@ -312,10 +316,12 @@ public:
 
 protected:
   struct KeyValue {
-    KeyValue(GraphId id_, graph_tile_ptr tile_) : id(id_), tile(std::move(tile_)) {
+    KeyValue(GraphId id_, graph_tile_ptr tile_, size_t size_)
+        : id(id_), tile(std::move(tile_)), size(size_) {
     }
     GraphId id;
     graph_tile_ptr tile;
+    size_t size;
   };
   using KeyValueIter = std::list<KeyValue>::iterator;
 
@@ -635,9 +641,11 @@ public:
    *             will point to the tile containing the opp_edge
    */
   const DirectedEdge* GetOpposingEdge(const DirectedEdge* edge, graph_tile_ptr& opp_tile) {
-    if (GetGraphTile(edge->endnode(), opp_tile)) {
-      const auto* node = opp_tile->node(edge->endnode());
-      return opp_tile->directededge(node->edge_index() + edge->opp_index());
+    const auto endnode = edge->endnode();
+    const auto opp_index = edge->opp_index();
+    if (GetGraphTile(endnode, opp_tile)) {
+      const auto* node = opp_tile->node(endnode);
+      return opp_tile->directededge(node->edge_index() + opp_index);
     }
     return nullptr;
   }
@@ -650,8 +658,8 @@ public:
    *                 will point to the tile containing the end_node of edge
    */
   const NodeInfo* GetEndNode(const DirectedEdge* edge, graph_tile_ptr& end_node_tile) {
-    return GetGraphTile(edge->endnode(), end_node_tile) ? end_node_tile->node(edge->endnode())
-                                                        : nullptr;
+    const auto endnode = edge->endnode();
+    return GetGraphTile(endnode, end_node_tile) ? end_node_tile->node(endnode) : nullptr;
   }
 
   /**

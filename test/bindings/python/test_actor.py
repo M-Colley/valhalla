@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 from valhalla import Actor, ValhallaError, get_config, VALHALLA_PRINT_VERSION
 from valhalla.valhalla_build_config import config as default_config
 
@@ -58,6 +59,12 @@ class TestBindings(unittest.TestCase):
 
         actor = Actor(config)
         self.assertIn("tileset_last_modified", actor.status())
+
+    def test_dict_config_file_is_removed(self):
+        with TemporaryDirectory() as tmp, patch("valhalla.config.tempfile.tempdir", tmp):
+            actor = Actor(get_config("", self.tiles_path))
+            self.assertEqual(list(Path(tmp).glob("valhalla_config_*.json")), [])
+            self.assertIn("tileset_last_modified", actor.status())
 
     def test_config_no_tiles(self):
         with TemporaryDirectory() as tmp_dir:

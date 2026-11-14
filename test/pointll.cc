@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 using namespace std;
 using namespace valhalla::midgard;
@@ -33,6 +34,44 @@ TEST(PointLL, test_constructor) {
   PointLL ll{1, 2};
   EXPECT_EQ(ll.x(), 1);
   EXPECT_EQ(ll.y(), 2);
+}
+
+TEST(PointLL, InterpolateRepeatedPoint) {
+  for (const PointLL point : {PointLL{0, 0}, PointLL{7, 61}, PointLL{-73, -45}}) {
+    for (const double fraction : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+      EXPECT_EQ(point.PointAlongSegment(point, fraction), point);
+    }
+  }
+  const GeoPoint<float> point{7, 61};
+  EXPECT_EQ(point.PointAlongSegment(point), point);
+}
+
+TEST(PointLL, InterpolateShortSegment) {
+  for (const auto& [start, end] : {std::pair{PointLL{0, 0}, PointLL{0.00000001, 0}},
+                                   std::pair{PointLL{0, 0}, PointLL{1e-200, 0}},
+                                   std::pair{PointLL{7, 61}, PointLL{7.00000001, 61.00000001}},
+                                   std::pair{PointLL{179.99999999, 0}, PointLL{-179.99999999, 0}}}) {
+    const auto length = start.Distance(end);
+    for (const double fraction : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+      const auto point = start.PointAlongSegment(end, fraction);
+      EXPECT_TRUE(point.InRange());
+      EXPECT_NEAR(start.Distance(point), length * fraction, 1e-8);
+      EXPECT_NEAR(point.Distance(end), length * (1.0 - fraction), 1e-8);
+    }
+  }
+  const GeoPoint<float> start{0, 0}, end{0.00000001f, 0};
+  const auto midpoint = start.PointAlongSegment(end);
+  EXPECT_TRUE(midpoint.InRange());
+  EXPECT_NEAR(midpoint.lng(), 0.000000005f, 1e-14f);
+}
+
+TEST(PointLL, InterpolateNearAntipodes) {
+  const PointLL start{0, 0}, end{179.999, 0};
+  for (const double fraction : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+    const auto point = start.PointAlongSegment(end, fraction);
+    EXPECT_NEAR(point.lng(), end.lng() * fraction, 1e-7);
+    EXPECT_NEAR(point.lat(), 0.0, 1e-7);
+  }
 }
 
 void test_along(const std::vector<PointLL>& l, double d, double a) {

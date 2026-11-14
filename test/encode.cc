@@ -661,10 +661,65 @@ TEST(Encode, Int7_Signed) {
 }
 
 TEST(Encode, Int7_SmallerTypes) {
+  test_int7_roundtrip<uint8_t>({0, 1, UINT8_MAX, 42}, "uint8_t");
+  test_int7_roundtrip<int8_t>({INT8_MIN, -1, 0, 1, INT8_MAX}, "int8_t");
   test_int7_roundtrip<uint32_t>({0, 1, UINT32_MAX, 42}, "uint32_t");
   test_int7_roundtrip<int32_t>({INT32_MIN, -1, 0, 1, INT32_MAX}, "int32_t");
   test_int7_roundtrip<uint16_t>({0, 1, UINT16_MAX, 42}, "uint16_t");
   test_int7_roundtrip<int16_t>({INT16_MIN, -1, 0, 1, INT16_MAX}, "int16_t");
+}
+
+TEST(Encode, RejectMalformedPolyline) {
+  for (const auto& encoded : {std::string(7, '_') + "??", std::string(6, '_') + "C?",
+                              std::string(">??"), std::string("\x7f??"), std::string("?")}) {
+    EXPECT_THROW(decode<container_t>(encoded), std::runtime_error);
+  }
+}
+
+TEST(Encode, RejectMalformedShape7) {
+  for (const auto& encoded : {std::string(5, '\x80') + std::string(2, '\0'),
+                              std::string(4, '\x80') + '\x10' + '\0', std::string(1, '\0')}) {
+    EXPECT_THROW(decode7<container_t>(encoded), std::runtime_error);
+  }
+}
+
+TEST(Encode, DecodeMaximumVarint) {
+  const container_t expected{{0, INT32_MIN}};
+  EXPECT_EQ(decode<container_t>(std::string(6, '~') + "B?", 1.0), expected);
+  EXPECT_EQ(decode7<container_t>(std::string(4, '\xff') + '\x0f' + '\0', 1.0), expected);
+}
+
+TEST(Encode, CoordinateAccumulationWraparound) {
+  const container_t expected{{0, INT32_MAX}, {0, INT32_MIN}, {0, INT32_MAX}};
+  EXPECT_EQ(decode<container_t>(std::string("}~~~~~B?A?@?"), 1.0), expected);
+  const std::string encoded{char(0xfe), char(0xff), char(0xff), char(0xff), char(0x0f),
+                            '\0',       char(0x02), '\0',       char(0x01), '\0'};
+  EXPECT_EQ(decode7<container_t>(encoded, 1.0), expected);
+}
+
+TEST(Encode, SevenDigitDateLine) {
+  const container_t points{{179.9, 0}, {-179.9, 0}, {179.9, 0}};
+  assert_approx_equal(decode<container_t>(encode(points, 10000000), 1e-7), points);
+  assert_approx_equal(decode7<container_t>(encode7(points, 10000000), 1e-7), points);
+}
+
+template <typename T> void test_invalid_int7() {
+  constexpr size_t bits = sizeof(T) * 8;
+  const auto oversized = std::string((bits + 6) / 7, '\x80') + '\0';
+  EXPECT_THROW(decode7int<std::vector<T>>(oversized), std::runtime_error);
+
+  const auto overflowing = std::string(bits / 7, '\x80') + char(1 << (bits % 7));
+  EXPECT_THROW(decode7int<std::vector<T>>(overflowing), std::runtime_error);
+  EXPECT_THROW(decode7int<std::vector<T>>(std::string(1, '\x80')), std::runtime_error);
+}
+
+TEST(Encode, RejectMalformedInt7) {
+  test_invalid_int7<uint16_t>();
+  test_invalid_int7<int16_t>();
+  test_invalid_int7<uint32_t>();
+  test_invalid_int7<int32_t>();
+  test_invalid_int7<uint64_t>();
+  test_invalid_int7<int64_t>();
 }
 
 TEST(ZigZag, EncodeDecode32) {

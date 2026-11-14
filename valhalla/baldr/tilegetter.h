@@ -2,20 +2,21 @@
 
 #include <cstdint>
 #include <functional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 // resp: a tilegetter_t::GET/HEAD_response_t
 // tile_url: string-like URL
 #define CURL_OR_THROW(resp, tile_url)                                                                \
-  ([&]() {                                                                                           \
-    if (resp.status_ == tile_getter_t::status_code_t::FAILURE) {                                     \
-      auto __http_code = std::to_string(resp.http_code_);                                            \
+  ([&](auto response) {                                                                              \
+    if (response.status_ == tile_getter_t::status_code_t::FAILURE) {                                 \
+      auto __http_code = std::to_string(response.http_code_);                                        \
       throw std::runtime_error("Couldn't read from " + std::string(tile_url) +                       \
                                " with HTTP status " + __http_code);                                  \
     }                                                                                                \
-    return resp;                                                                                     \
-  }())
+    return response;                                                                                 \
+  }(resp))
 
 namespace valhalla {
 namespace baldr {

@@ -18,6 +18,16 @@ namespace {
 
 const auto conf = test::make_config("test/data/utrecht_tiles");
 
+class TestReach : public Reach {
+public:
+  using Reach::enqueue;
+  using Reach::exact;
+
+  size_t queued_reach() const {
+    return queue_.size() - transitions_;
+  }
+};
+
 GraphId begin_node(GraphReader& reader, const DirectedEdge* edge) {
   // grab the node
   auto tile = reader.GetGraphTile(edge->endnode());
@@ -107,7 +117,22 @@ TEST(Reach, transition_misscount) {
   auto edge = gurka::findEdgeByNodes(reader, map.nodes, "a", "f");
 
   // check its reach
-  loki::Reach reach_checker;
+  TestReach reach_checker;
+  const auto node_id = std::get<1>(edge)->endnode();
+  const auto tile = reader.GetGraphTile(node_id);
+  const auto transitions = tile->GetNodeTransitions(node_id);
+  ASSERT_FALSE(transitions.empty());
+  reach_checker.enqueue(node_id, reader, costing, tile);
+  EXPECT_EQ(reach_checker.queued_reach(), 1);
+  for (int i = 0; i < 2; ++i) {
+    reach_checker.enqueue(node_id, reader, costing, tile);
+    EXPECT_EQ(reach_checker.queued_reach(), 1);
+  }
+  for (const auto& transition : transitions) {
+    reach_checker.enqueue(transition.endnode(), reader, costing, tile);
+    EXPECT_EQ(reach_checker.queued_reach(), 1);
+  }
+
   auto reach = reach_checker(std::get<1>(edge), std::get<0>(edge), 50, reader, costing);
 
   // all edges should have the same in/outbound reach
@@ -117,6 +142,20 @@ TEST(Reach, transition_misscount) {
   // at d and g because the path the way makes loops back on itself
   EXPECT_EQ(reach.inbound, 7);
   EXPECT_EQ(reach.outbound, 7);
+
+  auto inbound =
+      reach_checker.exact(std::get<1>(edge), std::get<0>(edge), 50, reader, costing, kInbound);
+  EXPECT_EQ(inbound.inbound, 7);
+  EXPECT_EQ(inbound.outbound, 0);
+
+  auto outbound =
+      reach_checker.exact(std::get<1>(edge), std::get<0>(edge), 50, reader, costing, kOutbound);
+  EXPECT_EQ(outbound.inbound, 0);
+  EXPECT_EQ(outbound.outbound, 7);
+
+  auto neither = reach_checker.exact(std::get<1>(edge), std::get<0>(edge), 50, reader, costing, 0);
+  EXPECT_EQ(neither.inbound, 0);
+  EXPECT_EQ(neither.outbound, 0);
 }
 
 } // namespace

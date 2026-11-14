@@ -3,6 +3,51 @@
 * **Added**
    * Add `sources_to_targets` as an alias for the C++ and Python `matrix` methods.
 * **Bug Fix**
+   * FIXED: use host build tools and avoid importing target Python modules when cross-compiling.
+   * FIXED: supply numeric Windows version defaults in the MinGW time-zone implementation.
+   * FIXED: build Python bindings without data tools and with GCC 16 MinGW size optimization.
+   * FIXED: clip partial-edge factor ranges and preserve actual elapsed seconds
+   * FIXED: pair each maneuver recost with its own starting elapsed time
+   * FIXED: clear clipped geometry when left or bottom clipping removes every point
+   * FIXED: classify UTF-8 street-name bytes without invalid signed character arguments
+   * FIXED: decode level precision as decimal digits and preserve fractional level labels
+   * FIXED: stop turn-lane processing from reading past the final maneuver
+   * FIXED: reset reused CURL request ranges, decoding, and interruption callbacks
+   * FIXED: reject durations without shape points and reject nonfinite request coordinates
+   * FIXED: escape JSON object keys and control bytes without changing stream formatting
+   * FIXED: publish candidate grid cache entries only after indexing succeeds
+   * FIXED: preserve null matrix locations and interpolate bridge elevations between fixed anchors
+   * FIXED: keep point interpolation finite for repeated and very short coordinates
+   * FIXED: handle empty and sliced string views and portable integer types in JSON writers
+   * FIXED: preserve graph tile ownership during cross-tile node, opposing-edge, and shortcut lookups
+   * FIXED: serialize nonfinite object and array values as null instead of malformed JSON
+   * FIXED: account for charged LRU tile weights and roll back failed cache insertions
+   * FIXED: reject JSON numeric conversions outside the requested type's range
+   * FIXED: avoid counting queued reachability nodes more than once
+   * FIXED: enforce the total linear cost edge limit, including generated shortcut records
+   * FIXED: retain shortcut cost factors and allow flags, and read edge lengths while their tiles are owned
+   * FIXED: synchronize elevation tile publication and recover from mapping, decompression, and allocation failures
+   * FIXED: transfer memory-map ownership on moves, recover from failed mappings, and honor partial mapping lengths on Windows
+   * FIXED: bound tar field and payload reads, and reject entry sizes that exceed the address space
+   * FIXED: round negative elevation samples correctly and handle empty profiles and zero-length edges
+   * FIXED: define wrapping arithmetic for integer and polyline delta encoding without changing serialized bytes
+   * FIXED: check the final polyline segment for self-intersections and handle short inputs
+   * FIXED: honor the optimizer seed when creating the initial tour
+   * FIXED: release existing edge-status arrays during move assignment
+   * FIXED: honor requested reachability expansion directions
+   * FIXED: return no items for grid range queries wholly outside the indexed bounds
+   * FIXED: validate every tile coordinate and handle polygon rings at world boundaries
+   * FIXED: clean up temporary Python configuration files after validation and construction failures
+   * FIXED: publish elevation downloads atomically so interrupted downloads do not poison the cache
+   * FIXED: validate tile cache keys and preserve cache accounting on duplicate insertions and allocation failures
+   * FIXED: validate local and remote tile extract indexes and avoid repeating HTTP requests during response checks
+   * FIXED: isolate nested defaults between Python `get_config()` calls
+   * FIXED: avoid repeated tar member scans and duplicate tile index entries when copying extracts
+   * FIXED: preserve GeoJSON polygon holes when selecting routing and elevation tiles
+   * FIXED: retain intersected grid cells when map-matching segments enter from the right or top
+   * FIXED: reject overflowing varints and invalid encoded-polyline bytes before shifting
+   * FIXED: reject invalid elevation coordinates and compressed tile sizes, and erase pending loads by key
+   * FIXED: apply the configured minimum linear cost factor to single-edge features
    * FIXED: preserve highway classification for roads sharing railway tracks.
    * FIXED: preserve access restrictions and oneway rules when bus lane counts are present.
    * FIXED: use configured pedestrian and bicycle speeds for maneuver guidance.
@@ -23,6 +68,19 @@
    * FIXED: retain every incoming way in no_entry restriction relations, including vehicle exceptions and conditional restrictions.
    * FIXED: warn when server policy prevents a supplied trace option from customizing map matching.
    * FIXED: include requested trace admin fields independently of node admin indices.
+   * FIXED: allow Python configurations to use either a tile extract or tile directory independently.
+   * FIXED: apply pedestrian direction restrictions independently of vehicle oneways.
+   * FIXED: keep available transit platform metadata and clear following transit state when a trip departure cannot be found
+   * FIXED: release adjusted frequency departures after transit lookup, including transfer retries [#6412](https://github.com/valhalla/valhalla/issues/6412)
+   * FIXED: initialize parsed costing defaults when creating costings and map matchers from an enum.
+   * FIXED: apply configured costing-specific map-matching values before allowed request overrides.
+   * FIXED: read predicted-speed coefficient bytes without unaligned typed loads.
+   * FIXED: keep unique name lookups valid across rehashing, clearing, copying and moving.
+   * FIXED: return no contours when no contour intervals are requested.
+   * FIXED: honor NumPy speed-profile strides and accept read-only inputs when compressing buckets.
+   * FIXED: retain every incoming way in no_entry restriction relations, including vehicle exceptions and conditional restrictions.
+   * FIXED: restore the OpenLR carriageway heuristic and consistent roundabout and sliproad priority in route and locate output.
+   * FIXED: warn when server policy prevents a supplied trace option from customizing map matching.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)
@@ -45,6 +103,8 @@
    * FIXED: respect time-dependent `private` roads [#6498](https://github.com/valhalla/valhalla/pull/6498)
    * FIXED: `ignore_oneways` is respected by reverse unidir A* (`arrive_by`), isochrones, bidirectional A* and CostMatrix, and allowed `linear_cost_factors` in reverse unidir A* [#6484](https://github.com/valhalla/valhalla/pull/6484)
 * **Enhancement**
+   * CHANGED: avoid scanning bucket contents when decreasing a label cost within the same queue bucket
+   * CHANGED: avoid one heap allocation per optimizer annealing attempt
    * ADDED: more surface types [#6337](https://github.com/valhalla/valhalla/pull/6337)
    * ADDED: `steps_factor` bicycle costing option and `exclude_steps` location search filter [#6394](https://github.com/valhalla/valhalla/pull/6394)
    * ADDED: `stop_impact` in `trace_attributes` [#6368](https://github.com/valhalla/valhalla/pull/6368)

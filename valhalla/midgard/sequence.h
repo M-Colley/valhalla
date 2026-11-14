@@ -10,6 +10,7 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -94,7 +95,7 @@ inline void* mmap(void* addr, size_t length, int prot, int flags, int fd, long l
   HANDLE mapped_handle = ::CreateFileMapping(file_handle, nullptr, protect, 0, 0, nullptr);
   if (mapped_handle) {
     map = ::MapViewOfFile(mapped_handle, access, (DWORD)((offset >> 32) & 0xffffffffUL),
-                          (DWORD)(offset & 0xffffffffUL), 0);
+                          (DWORD)(offset & 0xffffffffUL), length);
 
     BOOL rc = FALSE;
     rc = ::CloseHandle(mapped_handle); // release internal reference to mapped view
@@ -123,8 +124,19 @@ namespace midgard {
 template <class T> class mem_map {
 public:
   // non-copyable
-  mem_map(mem_map&&) = default;
-  mem_map& operator=(mem_map&&) = default;
+  mem_map(mem_map&& other) noexcept
+      : ptr(std::exchange(other.ptr, nullptr)), count(std::exchange(other.count, 0)),
+        file_name(std::move(other.file_name)) {
+  }
+  mem_map& operator=(mem_map&& other) {
+    if (this != &other) {
+      unmap();
+      ptr = std::exchange(other.ptr, nullptr);
+      count = std::exchange(other.count, 0);
+      file_name = std::move(other.file_name);
+    }
+    return *this;
+  }
   mem_map(const mem_map&) = delete;
   mem_map& operator=(const mem_map&) = delete;
 
@@ -171,6 +183,7 @@ public:
 
     // has to be something to map
     if (new_count > 0) {
+      std::string mapped_file_name(new_file_name);
       auto fd =
 #if defined(_WIN32)
           _open(new_file_name.c_str(), (readonly ? O_RDONLY : O_RDWR), 0);
@@ -180,23 +193,29 @@ public:
       if (fd == -1) {
         throw std::runtime_error(new_file_name + "(open): " + strerror(errno));
       }
-      ptr = mmap(nullptr, new_count * sizeof(T), (readonly ? PROT_READ : PROT_READ | PROT_WRITE),
-                 MAP_SHARED, fd, 0);
-      if (ptr == MAP_FAILED) {
-        throw std::runtime_error(new_file_name + "(mmap): " + strerror(errno));
-      }
+      auto mapped = mmap(nullptr, new_count * sizeof(T),
+                         (readonly ? PROT_READ : PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
+      const auto map_error = errno;
 
 #if defined(_WIN32)
       auto cl = _close(fd);
 #else
       auto cl = close(fd);
-      posix_madvise(ptr, new_count * sizeof(T), advice);
 #endif
-      if (cl == -1) {
-        throw std::runtime_error(new_file_name + "(close): " + strerror(errno));
+      if (mapped == MAP_FAILED) {
+        throw std::runtime_error(new_file_name + "(mmap): " + strerror(map_error));
       }
+      if (cl == -1) {
+        const auto close_error = errno;
+        munmap(mapped, new_count * sizeof(T));
+        throw std::runtime_error(new_file_name + "(close): " + strerror(close_error));
+      }
+#if !defined(_WIN32)
+      posix_madvise(mapped, new_count * sizeof(T), advice);
+#endif
+      ptr = mapped;
       count = new_count;
-      file_name = new_file_name;
+      file_name = std::move(mapped_file_name);
     }
   }
 
@@ -686,20 +705,17 @@ struct tar {
     char padding[12];
 
     static uint64_t octal_to_int(const char* data, size_t size = 12) {
-      const unsigned char* ptr = (const unsigned char*)data + size;
       uint64_t sum = 0;
-      uint64_t multiplier = 1;
-      // Skip everything after the last NUL/space character
-      // In some TAR archives the size field has non-trailing NULs/spaces, so this is necessary
-      const unsigned char* check = ptr; // This is used to check where the last NUL/space char is
-      for (; check >= (unsigned char*)data; check--) {
-        if ((*check) == 0 || (*check) == ' ') {
-          ptr = check - 1;
-        }
+      size_t i = 0;
+      while (i < size && data[i] == ' ') {
+        ++i;
       }
-      for (; ptr >= (unsigned char*)data; ptr--) {
-        sum += ((*ptr) - 48) * multiplier;
-        multiplier *= 8;
+      for (; i < size && data[i] != '\0' && data[i] != ' '; ++i) {
+        if (data[i] < '0' || data[i] > '7' ||
+            sum > (std::numeric_limits<uint64_t>::max() - (data[i] - '0')) / 8) {
+          throw std::runtime_error("Invalid octal tar field");
+        }
+        sum = sum * 8 + (data[i] - '0');
       }
       return sum;
     }
@@ -707,7 +723,14 @@ struct tar {
       return (memcmp("ustar", magic, 5) == 0);
     }
     size_t get_file_size() const {
-      return octal_to_int(size);
+      const auto value = octal_to_int(size, sizeof(size));
+      if (value > std::numeric_limits<size_t>::max()) {
+        throw std::runtime_error("Tar entry size exceeds the address space");
+      }
+      return static_cast<size_t>(value);
+    }
+    std::string get_file_name() const {
+      return std::string(name, std::find(name, name + sizeof(name), '\0'));
     }
     bool blank() const {
       constexpr header_t BLANK{};
@@ -725,8 +748,10 @@ struct tar {
         sum += ((char*)&temp)[i];
       }
       // check if its right
-      uint64_t rsum = octal_to_int(chksum);
-      return rsum == usum || static_cast<int64_t>(rsum) == sum;
+      try {
+        uint64_t rsum = octal_to_int(chksum, sizeof(chksum));
+        return rsum == usum || static_cast<int64_t>(rsum) == sum;
+      } catch (const std::runtime_error&) { return false; }
     }
   };
 
@@ -768,17 +793,27 @@ struct tar {
         corrupt_blocks += !h->blank();
         continue;
       }
-      auto size = h->get_file_size();
+      size_t size;
+      try {
+        size = h->get_file_size();
+      } catch (const std::runtime_error&) {
+        ++corrupt_blocks;
+        continue;
+      }
+      if (size > static_cast<size_t>(mm.get() + mm.size() - position)) {
+        ++corrupt_blocks;
+        break;
+      }
       if (h->typeflag == '0' || h->typeflag == '\0') {
         // tar doesn't automatically update path separators based on OS, so we need to do it...
-        std::filesystem::path filepath{h->name};
+        std::filesystem::path filepath{h->get_file_name()};
         filepath.make_preferred();
         if (!visitor(filepath.string(), position, size)) {
           break;
         }
       }
       // every entry's data is rounded to the nearst header_t sized "block"
-      auto blocks = static_cast<size_t>(std::ceil(static_cast<double>(size) / sizeof(header_t)));
+      auto blocks = size / sizeof(header_t) + (size % sizeof(header_t) != 0);
       position += blocks * sizeof(header_t);
     }
     return corrupt_blocks;
