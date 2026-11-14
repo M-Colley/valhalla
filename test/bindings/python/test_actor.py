@@ -67,8 +67,11 @@ class TestBindings(unittest.TestCase):
             self.assertIn("tileset_last_modified", actor.status())
 
     def test_config_no_tiles(self):
-        with self.assertRaises(FileNotFoundError):
-            get_config("valhalla_tiles")
+        with TemporaryDirectory() as tmp_dir:
+            missing = Path(tmp_dir)
+            config = get_config(tile_extract=missing / "missing.tar", tile_dir=missing / "missing")
+            with self.assertRaises(FileNotFoundError):
+                Actor(config)
 
     def test_endpoints_are_callable(self):
         # Smoke test: every action in loki.actions must be present as a
