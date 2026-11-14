@@ -17,7 +17,8 @@ def dict_or_str(func):
             return func(*args)
 
         if isinstance(args[1], dict):
-            return json.loads(func(args[0], json.dumps(args[1])))
+            response = func(args[0], json.dumps(args[1]))
+            return response if isinstance(response, bytes) else json.loads(response)
         elif not isinstance(args[1], str):
             raise ValueError("Request must be either of type str or dict")
         return func(*args)
@@ -30,6 +31,9 @@ def dict_or_str(func):
 class Actor(_Actor):
     """
     Valhalla's Actor class is used to call its actions, like route, isochrone, matrix etc.
+
+    JSON responses follow the input type: dict requests return dict responses and string
+    requests return strings. Protobuf and GeoTIFF responses return bytes for either input type.
 
     Configuration passed in either by an existing configuration JSON file path or in `dict` form,
     e.g. by calling valhalla.config.get_config(). In the latter case a temp file will be
@@ -51,7 +55,7 @@ class Actor(_Actor):
                 Path(temp_file_path).unlink(missing_ok=True)
 
     @dict_or_str
-    def route(self, req: Union[str, dict]) -> Union[str, dict]:
+    def route(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Calculates a route."""
         return super().route(req)
 
@@ -61,32 +65,32 @@ class Actor(_Actor):
         return super().locate(req)
 
     @dict_or_str
-    def optimized_route(self, req: Union[str, dict]) -> Union[str, dict]:
+    def optimized_route(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Optimizes the order of a set of waypoints."""
         return super().optimized_route(req)
 
     @dict_or_str
-    def isochrone(self, req: Union[str, dict]) -> Union[str, dict]:
+    def isochrone(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Calculates isochrones and isodistances."""
         return super().isochrone(req)
 
     @dict_or_str
-    def matrix(self, req: Union[str, dict]) -> Union[str, dict]:
+    def matrix(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Computes the time and distance between a set of locations and returns them as a matrix table."""
         return super().matrix(req)
 
     @dict_or_str
-    def sources_to_targets(self, req: Union[str, dict]) -> Union[str, dict]:
+    def sources_to_targets(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Alias for matrix."""
         return super().sources_to_targets(req)
 
     @dict_or_str
-    def trace_route(self, req: Union[str, dict]) -> Union[str, dict]:
+    def trace_route(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Map-matching for a set of input locations, e.g. from a GPS."""
         return super().trace_route(req)
 
     @dict_or_str
-    def trace_attributes(self, req: Union[str, dict]) -> Union[str, dict]:
+    def trace_attributes(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Returns detailed attribution along each portion of a route calculated from a set of input locations, e.g. from a GPS trace."""
         return super().trace_attributes(req)
 
@@ -101,17 +105,17 @@ class Actor(_Actor):
         return super().transit_available(req)
 
     @dict_or_str
-    def expansion(self, req: Union[str, dict]) -> Union[str, dict]:
+    def expansion(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Returns all road segments which were touched by the routing algorithm during the graph traversal."""
         return super().expansion(req)
 
     @dict_or_str
-    def centroid(self, req: Union[str, dict]) -> Union[str, dict]:
+    def centroid(self, req: Union[str, dict]) -> Union[str, dict, bytes]:
         """Returns routes from all the input locations to the minimum cost meeting point of those paths."""
         return super().centroid(req)
 
     @dict_or_str
-    def status(self, req: Union[str, dict] = "") -> Union[str, dict]:
+    def status(self, req: Union[str, dict] = "") -> Union[str, dict, bytes]:
         """Returns nothing or optionally details about Valhalla's configuration."""
         return super().status(req)
 

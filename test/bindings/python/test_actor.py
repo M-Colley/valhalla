@@ -194,3 +194,85 @@ class TestBindings(unittest.TestCase):
                     )
                 )
             self.assertIn("exceeds the max distance limit", str(e.exception))
+
+
+class TestBinaryResponses(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        tiles = Path(__file__).resolve().parents[2] / "traffic_matcher_tiles"
+        cls.actor = Actor(get_config(tile_extract="", tile_dir=tiles))
+        cls.locations = [
+            {"lat": 40.546115, "lon": -76.385076},
+            {"lat": 40.544232, "lon": -76.385752},
+        ]
+
+    def test_route_pbf(self):
+        query = {"locations": self.locations, "costing": "auto", "format": "pbf"}
+        for request in (query, json.dumps(query)):
+            with self.subTest(request_type=type(request).__name__):
+                response = self.actor.route(request)
+                self.assertIsInstance(response, bytes)
+                self.assertGreater(len(response), 0)
+
+    def test_json_response_types(self):
+        query = {
+            "locations": self.locations,
+            "costing": "auto",
+            "directions_options": {"language": "ru-RU"},
+        }
+        response = self.actor.route(query)
+        self.assertIn("trip", response)
+        raw_response = self.actor.route(json.dumps(query))
+        self.assertIsInstance(raw_response, str)
+        self.assertTrue(has_cyrillic(raw_response))
+        self.assertEqual(json.loads(raw_response), response)
+
+    def test_matrix_pbf_alias(self):
+        query = {
+            "sources": self.locations[:1],
+            "targets": self.locations[1:],
+            "costing": "auto",
+            "format": "pbf",
+        }
+        for endpoint_name in ("matrix", "sources_to_targets"):
+            endpoint = getattr(self.actor, endpoint_name)
+            for request in (query, json.dumps(query)):
+                with self.subTest(endpoint=endpoint_name, request_type=type(request).__name__):
+                    response = endpoint(request)
+                    self.assertIsInstance(response, bytes)
+                    self.assertGreater(len(response), 0)
+
+    def test_unsupported_binary_format_falls_back_to_json(self):
+        # GeoTIFF is supported by isochrone, not route.
+        query = {"locations": self.locations, "costing": "auto", "format": "geotiff"}
+        response = self.actor.route(query)
+        self.assertIn("trip", response)
+        self.assertIn(211, [warning["code"] for warning in response["trip"]["warnings"]])
+        raw_response = self.actor.route(json.dumps(query))
+        self.assertIsInstance(raw_response, str)
+        self.assertEqual(json.loads(raw_response), response)
+
+    def test_isochrone_geotiff(self):
+        query = {
+            "locations": self.locations[:1],
+            "costing": "auto",
+            "contours": [{"time": 1}],
+            "format": "geotiff",
+        }
+        response = self.actor.isochrone(query)
+        if isinstance(response, dict):
+            self.assertIn(211, [warning["code"] for warning in response["warnings"]])
+            self.skipTest("GeoTIFF support is disabled in this build")
+        for request in (query, json.dumps(query)):
+            with self.subTest(request_type=type(request).__name__):
+                response = self.actor.isochrone(request)
+                self.assertIsInstance(response, bytes)
+                self.assertGreater(len(response), 8)
+                self.assertIn(response[:4], (b"II*\x00", b"MM\x00*"))
+
+    def test_binary_request_error(self):
+        query = {"locations": [], "costing": "auto", "format": "pbf"}
+        with self.assertRaises(ValhallaError) as ctx:
+            self.actor.route(query)
+        self.assertEqual(ctx.exception.code, 110)
+        self.assertEqual(ctx.exception.http_code, 400)
