@@ -99,7 +99,7 @@ set(tests aabb2 access_restriction actor admin attributes_controller configurati
 if(ENABLE_DATA_TOOLS)
   list(APPEND tests astar multimodal_astar complexrestriction countryaccess graphbuilder graphparser restriction_parser
     graphtilebuilder graphreader hierarchylimits isochrone predictive_traffic idtable mapmatch matrix matrix_bss minbb multipoint_routes
-    names node_search osmnode reach recover_shortcut refs servicedays shape_attributes signinfo summary urban tar_index
+    names negative_osm_ids node_search osmnode reach recover_shortcut refs servicedays shape_attributes signinfo summary urban tar_index
     thor_worker timedep_paths timeparsing trivial_paths uniquenames util_mjolnir utrecht lua alternates)
   if(ENABLE_HTTP AND ENABLE_SERVICES)
     list(APPEND tests http_tiles)
