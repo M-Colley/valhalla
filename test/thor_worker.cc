@@ -157,6 +157,81 @@ TEST(ThorWorker, TraceResponsesIncludeIgnoredOptionWarnings) {
   }
 }
 
+std::string admin_filter_request(const std::string& filters) {
+  return R"({"costing":"auto","shape_match":"map_snap","shape":[
+      {"lat":40.546115,"lon":-76.385076},{"lat":40.544232,"lon":-76.385752}],
+      "filters":)" +
+         filters + "}";
+}
+
+TEST(ThorWorker, IncludeAdminFieldsWithoutNodeIndex) {
+  tyr::actor_t actor(test::make_config(VALHALLA_SOURCE_DIR "test/traffic_matcher_tiles"), true);
+  const auto baseline = test::json_to_pt(actor.trace_attributes(admin_filter_request("{}")));
+  const auto baseline_admins = baseline.get_child_optional("admins");
+  ASSERT_TRUE(baseline_admins);
+  ASSERT_FALSE(baseline_admins->empty());
+  EXPECT_FALSE(baseline_admins->front().second.get<std::string>("country_code").empty());
+
+  for (const auto* field : {"country_code", "country_text", "state_code", "state_text"}) {
+    SCOPED_TRACE(field);
+    const auto result = test::json_to_pt(actor.trace_attributes(
+        admin_filter_request(R"({"action":"include","attributes":["admin.)"s + field + R"("]})")));
+    const auto admins = result.get_child_optional("admins");
+    ASSERT_TRUE(admins);
+    ASSERT_EQ(admins->size(), baseline_admins->size());
+    auto expected = baseline_admins->begin();
+    for (const auto& admin : *admins) {
+      const auto value = expected++->second.get_optional<std::string>(field);
+      EXPECT_EQ(admin.second.size(), value ? 1 : 0);
+      if (value) {
+        EXPECT_EQ(admin.second.get<std::string>(field), *value);
+      }
+    }
+    for (const auto& edge : result.get_child("edges")) {
+      EXPECT_TRUE(edge.second.empty());
+    }
+  }
+}
+
+TEST(ThorWorker, IncludeAdminIndexLinksToRequestedAdmins) {
+  tyr::actor_t actor(test::make_config(VALHALLA_SOURCE_DIR "test/traffic_matcher_tiles"), true);
+  Api api;
+  const auto result = test::json_to_pt(actor.trace_attributes(
+      admin_filter_request(
+          R"({"action":"include","attributes":["admin.country_code","node.admin_index"]})"),
+      nullptr, &api));
+  const auto admins = result.get_child_optional("admins");
+  ASSERT_TRUE(admins);
+  ASSERT_FALSE(admins->empty());
+  ASSERT_GT(api.trip().routes_size(), 0);
+  for (const auto& route : api.trip().routes()) {
+    for (const auto& leg : route.legs()) {
+      ASSERT_GT(leg.admin_size(), 0);
+      for (const auto& node : leg.node()) {
+        EXPECT_LT(node.admin_index(), leg.admin_size());
+      }
+    }
+  }
+  for (const auto& edge : result.get_child("edges")) {
+    EXPECT_LT(edge.second.get<unsigned>("end_node.admin_index"), admins->size());
+  }
+}
+
+TEST(ThorWorker, ExcludedAdminFieldsStayAbsent) {
+  tyr::actor_t actor(test::make_config(VALHALLA_SOURCE_DIR "test/traffic_matcher_tiles"), true);
+  for (
+      const auto* filters :
+      {R"({"action":"include","attributes":["node.admin_index"]})",
+       R"({"action":"exclude","attributes":["admin.country_code","admin.country_text","admin.state_code","admin.state_text"]})"}) {
+    SCOPED_TRACE(filters);
+    const auto result = test::json_to_pt(actor.trace_attributes(admin_filter_request(filters)));
+    EXPECT_FALSE(result.get_child_optional("admins"));
+    for (const auto& edge : result.get_child("edges")) {
+      EXPECT_TRUE(edge.second.get_optional<unsigned>("end_node.admin_index"));
+    }
+  }
+}
+
 TEST(ThorWorker, test_parse_filter_attributes_defaults) {
   tyr::actor_t actor(conf, true);
 
