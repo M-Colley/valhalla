@@ -22,6 +22,17 @@ namespace meili {
 MapMatcherFactory::MapMatcherFactory(const boost::property_tree::ptree& root,
                                      const std::shared_ptr<baldr::GraphReader>& graph_reader)
     : config_(root.get_child("meili")), graphreader_(graph_reader) {
+  // Parse configured costing overrides once, preserving the global request allowlist.
+  for (const auto& section : root.get_child("meili")) {
+    Costing::Type costing;
+    if (Costing_Enum_Parse(section.first, &costing)) {
+      auto config = config_;
+      boost::property_tree::ptree overrides;
+      overrides.add_child("default", section.second);
+      config.Read(overrides);
+      costing_configs_.emplace(costing, std::move(config));
+    }
+  }
   if (!graphreader_)
     graphreader_ = std::make_shared<baldr::GraphReader>(root.get_child("mjolnir"));
   candidatequery_ =
@@ -47,8 +58,9 @@ MapMatcher* MapMatcherFactory::Create(const Options& options) {
 }
 
 Config MapMatcherFactory::MergeConfig(const Options& options) const {
-  // Copy the default config
-  auto config = config_;
+  // Configured costing values override defaults before allowed request overrides.
+  const auto costing = costing_configs_.find(options.costing_type());
+  auto config = costing == costing_configs_.end() ? config_ : costing->second;
 
   // Check for overrides of matcher related directions options. Override these values in config.
   if (options.has_search_radius_case() && config.candidate_search.is_search_radius_customizable) {
