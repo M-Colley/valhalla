@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+
 using namespace std;
 using namespace valhalla::baldr;
 
@@ -215,6 +217,34 @@ TEST(AttrController, TestAdminCategoryWithMixedAttributes) {
 
   // Admin category should be enabled
   TryCategoryAttributeEnabled(controller, kAdminCategory, true);
+}
+
+TEST(AttrController, DirectionalSpeedFiltersAreIndependent) {
+  const std::array<std::string_view, 4> flags{"edge.freeflow_speed_forward",
+                                              "edge.constrained_speed_forward",
+                                              "edge.freeflow_speed_backward",
+                                              "edge.constrained_speed_backward"};
+  for (const auto requested : flags) {
+    SCOPED_TRACE(requested);
+    for (const auto action : {valhalla::FilterAction::include, valhalla::FilterAction::exclude}) {
+      valhalla::Options options;
+      options.set_filter_action(action);
+      options.add_filter_attributes(std::string(requested));
+      AttributesController controller(options, true);
+      for (const auto flag : flags) {
+        EXPECT_EQ(controller(flag),
+                  action == valhalla::FilterAction::include ? flag == requested : flag != requested);
+      }
+    }
+  }
+}
+
+TEST(AttrController, DirectionalSpeedFiltersAreDisabledByDefault) {
+  AttributesController controller;
+  EXPECT_FALSE(controller(kEdgeFreeflowSpeedFwd));
+  EXPECT_FALSE(controller(kEdgeConstrainedSpeedFwd));
+  EXPECT_FALSE(controller(kEdgeFreeflowSpeedBwd));
+  EXPECT_FALSE(controller(kEdgeConstrainedSpeedBwd));
 }
 
 } // namespace
