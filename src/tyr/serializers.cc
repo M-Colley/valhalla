@@ -27,16 +27,21 @@ namespace {
 using FormOfWay = valhalla::baldr::OpenLR::LocationReferencePoint::FormOfWay;
 
 FormOfWay road_class_to_fow(const valhalla::TripLeg::Edge& edge) {
+  // Carriageway separation is not stored explicitly. Retain the historical
+  // high-class one-way approximation instead of treating two-way roads as divided.
+  const bool one_way = edge.traversability() == valhalla::TripLeg::kForward ||
+                       edge.traversability() == valhalla::TripLeg::kBackward;
   if (edge.roundabout()) {
     return FormOfWay::ROUNDABOUT;
   } else if (edge.use() == valhalla::TripLeg::kRampUse ||
              edge.use() == valhalla::TripLeg::kTurnChannelUse) {
     return FormOfWay::SLIPROAD;
-  } else if (edge.road_class() == valhalla::RoadClass::kMotorway) {
+  } else if (edge.road_class() == valhalla::RoadClass::kMotorway && one_way) {
     return FormOfWay::MOTORWAY;
-  } else if (edge.traversability() == valhalla::TripLeg::kBoth) {
+  } else if (edge.road_class() <= valhalla::RoadClass::kTertiary && one_way) {
     return FormOfWay::MULTIPLE_CARRIAGEWAY;
-  } else if (edge.traversability() != valhalla::TripLeg::kNone) {
+  } else if (edge.road_class() <= valhalla::RoadClass::kTertiary &&
+             edge.traversability() == valhalla::TripLeg::kBoth) {
     return FormOfWay::SINGLE_CARRIAGEWAY;
   } else {
     return FormOfWay::OTHER;

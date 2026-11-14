@@ -314,6 +314,62 @@ TEST(OpenLR, road_class_to_fow) {
   EXPECT_EQ(openlrs.front().lrps[0].fow, FormOfWay::ROUNDABOUT);
 }
 
+TEST(OpenLR, CarriagewayHeuristic) {
+  struct Case {
+    valhalla::RoadClass road_class;
+    TripLeg::Traversability traversability;
+    FormOfWay expected;
+  };
+  // Preserve the historical high-class one-way approximation; access alone does
+  // not establish physical carriageway separation.
+  const std::vector<Case> cases = {
+      {valhalla::kMotorway, TripLeg::kForward, FormOfWay::MOTORWAY},
+      {valhalla::kMotorway, TripLeg::kBackward, FormOfWay::MOTORWAY},
+      {valhalla::kMotorway, TripLeg::kBoth, FormOfWay::SINGLE_CARRIAGEWAY},
+      {valhalla::kTrunk, TripLeg::kForward, FormOfWay::MULTIPLE_CARRIAGEWAY},
+      {valhalla::kTrunk, TripLeg::kBoth, FormOfWay::SINGLE_CARRIAGEWAY},
+      {valhalla::kPrimary, TripLeg::kBackward, FormOfWay::MULTIPLE_CARRIAGEWAY},
+      {valhalla::kPrimary, TripLeg::kBoth, FormOfWay::SINGLE_CARRIAGEWAY},
+      {valhalla::kSecondary, TripLeg::kBoth, FormOfWay::SINGLE_CARRIAGEWAY},
+      {valhalla::kTertiary, TripLeg::kForward, FormOfWay::MULTIPLE_CARRIAGEWAY},
+      {valhalla::kTertiary, TripLeg::kBoth, FormOfWay::SINGLE_CARRIAGEWAY},
+      {valhalla::kResidential, TripLeg::kForward, FormOfWay::OTHER},
+      {valhalla::kResidential, TripLeg::kBoth, FormOfWay::OTHER},
+      {valhalla::kPrimary, TripLeg::kNone, FormOfWay::OTHER},
+      {valhalla::kMotorway, TripLeg::kNone, FormOfWay::OTHER},
+  };
+  for (const auto& test : cases) {
+    auto leg = CreateLeg({{0, 0}, {1, 1}});
+    auto* edge = leg.mutable_node(0)->mutable_edge();
+    edge->set_road_class(test.road_class);
+    edge->set_traversability(test.traversability);
+    const auto openlrs = LegToOpenLrs(std::move(leg));
+    ASSERT_EQ(openlrs.size(), 1);
+    for (const auto& lrp : openlrs.front().lrps)
+      EXPECT_EQ(lrp.fow, test.expected)
+          << "road_class=" << test.road_class << ", traversability=" << test.traversability;
+  }
+}
+
+TEST(OpenLR, SpecialFormPriority) {
+  for (const auto use : {TripLeg::kRoadUse, TripLeg::kRampUse, TripLeg::kTurnChannelUse}) {
+    auto leg = CreateLeg({{0, 0}, {1, 1}});
+    auto* edge = leg.mutable_node(0)->mutable_edge();
+    edge->set_road_class(valhalla::kMotorway);
+    edge->set_use(use);
+    edge->set_roundabout(true);
+    EXPECT_EQ(LegToOpenLrs(std::move(leg)).front().lrps.front().fow, FormOfWay::ROUNDABOUT);
+
+    if (use != TripLeg::kRoadUse) {
+      leg = CreateLeg({{0, 0}, {1, 1}});
+      edge = leg.mutable_node(0)->mutable_edge();
+      edge->set_road_class(valhalla::kMotorway);
+      edge->set_use(use);
+      EXPECT_EQ(LegToOpenLrs(std::move(leg)).front().lrps.front().fow, FormOfWay::SLIPROAD);
+    }
+  }
+}
+
 // TripPath to OpenLR tests: Spot check that some two point line segments (on a primary road
 // segment). Note that the validation of OpenLR serialization is done in the tests fixtures above.
 
