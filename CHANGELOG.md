@@ -54,6 +54,7 @@
    * FIXED: honor motor_vehicle node access for motorcycles and mopeds.
    * FIXED: allow Python configurations to use either a tile extract or tile directory independently.
    * FIXED: apply pedestrian direction restrictions independently of vehicle oneways.
+   * FIXED: keep available transit platform metadata and clear following transit state when a trip departure cannot be found
    * FIXED: release adjusted frequency departures after transit lookup, including transfer retries [#6412](https://github.com/valhalla/valhalla/issues/6412)
    * FIXED: initialize parsed costing defaults when creating costings and map matchers from an enum.
    * FIXED: apply configured costing-specific map-matching values before allowed request overrides.

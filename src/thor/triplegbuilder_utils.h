@@ -261,7 +261,7 @@ private:
         transit_platform_info->set_arrival_date_time(arrival_time);
       }
 
-      // If this edge has a trip id then there is a transit departure
+      // Look up the departure for this edge's trip, if one is available.
       if (trip_id) {
 
         const valhalla::baldr::transit_departure_ptr transit_departure(
@@ -271,7 +271,7 @@ private:
 
         assumed_schedule = false;
         uint32_t origin_pivot_days, days_from_creation;
-        if (!origin.date_time().empty()) {
+        if (transit_departure && !origin.date_time().empty()) {
           origin_pivot_days = valhalla::baldr::DateTime::days_from_pivot_date(
               valhalla::baldr::DateTime::get_formatted_date(origin.date_time()));
           days_from_creation = origin_pivot_days - graphtile->header()->date_created();
@@ -338,6 +338,11 @@ private:
 
           // Get the block Id
           block_id = transit_departure->blockid();
+        } else {
+          // The incoming arrival was copied above; an unavailable departure cannot
+          // supply a block or an arrival at the next stop.
+          arrival_time.clear();
+          block_id = 0;
         }
       } else {
         // No departing trip, set the arrival time (for next stop) to empty
