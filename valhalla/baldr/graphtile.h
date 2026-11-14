@@ -605,7 +605,9 @@ public:
    * @param   wheelchair        Only find departures with wheelchair access if true
    * @param   bicycle           Only find departures with bicycle access if true
    * @return  Returns a pointer to the transit departure information.
-   *          Returns nullptr if no departures are found.
+   *          Returns nullptr if no departures are found. Fixed schedules are borrowed
+   *          from this tile; frequency schedules are allocated and owned by the caller.
+   *          Wrap the result in transit_departure_ptr to manage both cases safely.
    */
   const TransitDeparture* GetNextDeparture(const uint32_t lineid,
                                            const uint32_t current_time,
@@ -621,7 +623,9 @@ public:
    * @param   tripid  Trip Id.
    * @param   current_time      Current time (seconds from midnight).
    * @return  Returns a pointer to the transit departure information.
-   *          Returns nullptr if no departure is found.
+   *          Returns nullptr if no departure is found. Fixed schedules are borrowed
+   *          from this tile; frequency schedules are allocated and owned by the caller.
+   *          Wrap the result in transit_departure_ptr to manage both cases safely.
    */
   const TransitDeparture* GetTransitDeparture(const uint32_t lineid,
                                               const uint32_t tripid,

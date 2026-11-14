@@ -264,10 +264,10 @@ private:
       // If this edge has a trip id then there is a transit departure
       if (trip_id) {
 
-        const valhalla::baldr::TransitDeparture* transit_departure =
+        const valhalla::baldr::transit_departure_ptr transit_departure(
             graphtile->GetTransitDeparture(graphtile->directededge(edge.id())->lineid(), trip_id,
                                            time_info.second_of_week %
-                                               valhalla::midgard::kSecondsPerDay);
+                                               valhalla::midgard::kSecondsPerDay));
 
         assumed_schedule = false;
         uint32_t origin_pivot_days, days_from_creation;
