@@ -6,6 +6,8 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
+#include <utility>
 
 using namespace std;
 using namespace valhalla::baldr;
@@ -258,6 +260,37 @@ TEST(PredictedSpeeds, test_compress_decompress_accuracy) {
   // check that all decompressed speed values differ from original by no more than threshold
   float max_diff = *std::max_element(diff_speeds.begin(), diff_speeds.end());
   EXPECT_LE(max_diff, 2.f) << "Low decompression accuracy"; // <= 2 KPH
+}
+
+TEST(PredictedSpeeds, CompressionAcceptsLargeRepresentableProfiles) {
+  std::array<float, kBucketsPerWeek> speeds;
+  // Constant 729 profiles round to DC coefficients +/-32732, close to the format limits.
+  for (const auto [value, expected] : {std::pair{700.f, 31430}, std::pair{-700.f, -31430},
+                                       std::pair{729.f, 32732}, std::pair{-729.f, -32732}}) {
+    SCOPED_TRACE(value);
+    speeds.fill(value);
+    const auto coefficients = compress_speed_buckets(speeds.data());
+    EXPECT_EQ(coefficients.front(), expected);
+    EXPECT_NEAR(decompress_speed_bucket(coefficients.data(), kBucketsPerWeek / 2), value, 1.f);
+  }
+}
+
+TEST(PredictedSpeeds, CompressionRejectsUnrepresentableProfiles) {
+  std::array<float, kBucketsPerWeek> speeds;
+  for (const float value :
+       {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity()}) {
+    SCOPED_TRACE(value);
+    speeds.fill(50.f);
+    speeds[kBucketsPerWeek / 2] = value;
+    EXPECT_THROW(compress_speed_buckets(speeds.data()), std::invalid_argument);
+  }
+  // Constant 730 profiles round to +/-32777, just beyond either format limit.
+  for (const float value : {730.f, -730.f, 1000.f, -1000.f, std::numeric_limits<float>::max()}) {
+    SCOPED_TRACE(value);
+    speeds.fill(value);
+    EXPECT_THROW(compress_speed_buckets(speeds.data()), std::invalid_argument);
+  }
 }
 
 struct EncoderDecoderTest : public ::testing::Test {

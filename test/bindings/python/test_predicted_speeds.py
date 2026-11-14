@@ -100,6 +100,13 @@ class TestPredictedSpeeds(unittest.TestCase):
         self.assertLessEqual(mean_error, 1.0, f"Mean error {mean_error:.2f} KPH exceeds threshold")
         self.assertLessEqual(max_error, 2.0, f"Max error {max_error:.2f} KPH exceeds threshold")
 
+    def test_compress_unrepresentable_profile(self):
+        for value in (np.nan, 1000.0, -1000.0):
+            with self.subTest(value=value):
+                speeds = np.full(BUCKETS_PER_WEEK, value, dtype=np.float32)
+                with self.assertRaises(ValueError):
+                    compress_speed_buckets(speeds)
+
     def test_encode_decode_round_trip(self):
         """Test encode/decode round-trip preserves coefficients."""
         # Create test coefficients (alternating positive/negative)

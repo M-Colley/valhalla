@@ -14,6 +14,7 @@
    * FIXED: apply configured costing-specific map-matching values before allowed request overrides.
    * FIXED: initialize parsed costing defaults when creating costings and map matchers from an enum.
    * FIXED: restore the OpenLR carriageway heuristic and consistent roundabout and sliproad priority in route and locate output.
+   * FIXED: reject speed profiles whose compressed coefficients cannot fit in the serialized format.
    * FIXED: read predicted-speed coefficient bytes without unaligned typed loads.
    * FIXED: keep unique name lookups valid across rehashing, clearing, copying and moving.
    * FIXED: honor NumPy speed-profile strides and accept read-only inputs when compressing buckets.

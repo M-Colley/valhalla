@@ -401,6 +401,7 @@ def compress_speed_buckets(speeds: Annotated[NDArray[numpy.float32], dict(shape=
 
     :param speeds: NumPy array of 2016 float values (one per 5-minute bucket)
     :returns: NumPy array of 200 int16 coefficients
+    :raises ValueError: If compressed coefficients are non-finite or outside the int16 range
     """
 
 def decompress_speed_bucket(coefficients: Sequence[int], bucket_idx: int) -> float:
