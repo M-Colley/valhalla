@@ -540,6 +540,21 @@ TEST(locate, basic_properties) {
   std::vector<std::string> way_names = {
       "AB", "BC", "AD", "BE", "CF", "DE", "EF", "DG", "EH", "FI", "GH", "HI",
   };
+  using FormOfWay = OpenLR::LocationReferencePoint::FormOfWay;
+  const std::vector<FormOfWay> expected_forms = {
+      FormOfWay::MOTORWAY,
+      FormOfWay::SINGLE_CARRIAGEWAY,
+      FormOfWay::OTHER,
+      FormOfWay::SLIPROAD,
+      FormOfWay::OTHER,
+      FormOfWay::SINGLE_CARRIAGEWAY,
+      FormOfWay::SINGLE_CARRIAGEWAY,
+      FormOfWay::SLIPROAD,
+      FormOfWay::OTHER,
+      FormOfWay::OTHER,
+      FormOfWay::SINGLE_CARRIAGEWAY,
+      FormOfWay::OTHER,
+  };
   std::vector<int> allowed_headings = {0, 90, 180, 270, 360};
   // check each locations resulting info
   for (size_t i = 0; i < 12; ++i) {
@@ -572,9 +587,10 @@ TEST(locate, basic_properties) {
       ASSERT_EQ(rapidjson::Pointer("/edge/classification/link").Get(edge)->GetBool(), link);
 
       // parse openlr
-      ASSERT_NO_THROW(
-          baldr::OpenLR::OpenLr(rapidjson::Pointer("/linear_reference").Get(edge)->GetString(),
-                                true));
+      const baldr::OpenLR::OpenLr
+          reference(rapidjson::Pointer("/linear_reference").Get(edge)->GetString(), true);
+      for (const auto& lrp : reference.lrps)
+        EXPECT_EQ(lrp.fow, expected_forms[i]) << way_name;
 
       // check out some traffic
       ASSERT_EQ(rapidjson::Pointer("/live_speed/speed_0").Get(edge)->GetInt(), 126);
