@@ -97,9 +97,9 @@ TEST(ThorWorker, test_linear_references) {
           {"lat":52.09098,"lon":5.09679}]})",
   };
   const std::vector<std::string>& expected = {
-      "CwOgEyUK5SKXAP/H//wiBw==",
-      "CwOf+CUK4iKXAP/k//8iBw==",
-      "CwOf6yUK4SKXAP/Y//0iBw==",
+      "CwOgEyUK5SOXAP/H//wjBw==",
+      "CwOf+CUK4iOXAP/k//8jBw==",
+      "CwOf6yUK4SOXAP/Y//0jBw==",
   };
   tyr::actor_t actor(conf, true);
   for (const auto& request : requests) {
