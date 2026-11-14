@@ -1638,9 +1638,9 @@ TripLeg_Edge* AddTripEdge(const AttributesController& controller,
       transit_route_info->set_trip_id(edge_itr->trip_id);
     }
 
-    const TransitDeparture* transit_departure =
+    const transit_departure_ptr transit_departure(
         graphtile->GetTransitDeparture(directededge->lineid(), edge_itr->trip_id,
-                                       time_info.second_of_week % kSecondsPerDay);
+                                       time_info.second_of_week % kSecondsPerDay));
 
     if (transit_departure) {
 
