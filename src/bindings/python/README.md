@@ -90,6 +90,24 @@ route = actor.route({"locations": [...]})
 # actor.matrix(request) is also available as actor.sources_to_targets(request)
 ```
 
+Protobuf (`"format": "pbf"`) and GeoTIFF (`"format": "geotiff"`) responses are
+returned as `bytes` for both dictionary and string requests. GeoTIFF requires a
+build with GeoTIFF support and is available for isochrones. JSON responses retain
+the request's type: dictionary requests return dictionaries and string requests
+return JSON strings.
+
+```python
+from pathlib import Path
+
+data = actor.isochrone({
+    "locations": [{"lat": 42.5, "lon": 1.5}],
+    "costing": "pedestrian",
+    "contours": [{"time": 5}],
+    "format": "geotiff",
+})
+Path("isochrone.tif").write_bytes(data)
+```
+
 #### Error Handling
 
 When a routing operation fails, a `ValhallaError` is raised (a subclass of `RuntimeError`) with structured fields from Valhalla's internal error codes:

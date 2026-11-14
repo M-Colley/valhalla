@@ -3,6 +3,7 @@
 * **Added**
    * Add `sources_to_targets` as an alias for the C++ and Python `matrix` methods.
 * **Bug Fix**
+   * FIXED: return Python actor Protobuf and GeoTIFF responses as bytes without UTF-8 decoding.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)
