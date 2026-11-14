@@ -4458,7 +4458,7 @@
     {
       "key": "railway",
       "value": "rail",
-      "description": "If auto access then this is a auto train.",
+      "description": "Roads sharing railway tracks retain their highway classification; auto trains require route=shuttle_train.",
       "object_types": [
         "way"
       ]
