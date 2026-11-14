@@ -1,5 +1,7 @@
 ## UNRELEASED
 * **Removed**
+* **Added**
+   * Add `sources_to_targets` as an alias for the C++ and Python `matrix` methods.
 * **Bug Fix**
    * FIXED: preserve highway classification for roads sharing railway tracks.
    * FIXED: preserve access restrictions and oneway rules when bus lane counts are present.
