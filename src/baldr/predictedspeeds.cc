@@ -1,7 +1,10 @@
 #include "baldr/predictedspeeds.h"
 #include "midgard/util.h"
 
+#include <cmath>
 #include <cstring>
+#include <limits>
+#include <stdexcept>
 
 namespace valhalla {
 namespace baldr {
@@ -70,7 +73,12 @@ std::array<int16_t, kCoefficientCount> compress_speed_buckets(const float* speed
 
   std::array<int16_t, kCoefficientCount> result;
   for (size_t i = 0; i < coefficients.size(); ++i) {
-    result[i] = static_cast<int16_t>(roundf(kSpeedNormalization * coefficients[i]));
+    const auto coefficient = roundf(kSpeedNormalization * coefficients[i]);
+    if (!std::isfinite(coefficient) || coefficient < std::numeric_limits<int16_t>::min() ||
+        coefficient > std::numeric_limits<int16_t>::max()) {
+      throw std::invalid_argument("Speed profile coefficients must be finite and fit in int16_t");
+    }
+    result[i] = static_cast<int16_t>(coefficient);
   }
   return result;
 }

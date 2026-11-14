@@ -31,7 +31,8 @@ void init_predicted_speeds(nb::module_& m) {
       nb::arg("speeds"),
       "Compress 2016 speed buckets into 200 DCT-II coefficients.\n\n"
       ":param speeds: NumPy array of 2016 float values (one per 5-minute bucket)\n"
-      ":returns: NumPy array of 200 int16 coefficients");
+      ":returns: NumPy array of 200 int16 coefficients\n"
+      ":raises ValueError: If compressed coefficients are non-finite or outside the int16 range");
 
   m.def(
       "decompress_speed_bucket",

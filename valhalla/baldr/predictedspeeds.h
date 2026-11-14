@@ -23,6 +23,7 @@ constexpr uint32_t kDecodedSpeedSize = 2 * kCoefficientCount;
  * Compress speed buckets by truncating its DCT-II transform.
  * @param speeds    Array of speed values for each bucket (must be 2016 values).
  * @return  Transformed values.
+ * @throws std::invalid_argument if a rounded coefficient is non-finite or outside the int16_t range.
  */
 std::array<int16_t, kCoefficientCount> compress_speed_buckets(const float* speeds);
 
