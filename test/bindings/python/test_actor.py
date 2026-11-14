@@ -227,6 +227,24 @@ class TestBinaryResponses(unittest.TestCase):
         self.assertTrue(has_cyrillic(raw_response))
         self.assertEqual(json.loads(raw_response), response)
 
+    def test_status_and_trace_attributes_pbf(self):
+        queries = {
+            "status": {"format": "pbf"},
+            "trace_attributes": {
+                "shape": self.locations,
+                "shape_match": "map_snap",
+                "costing": "auto",
+                "format": "pbf",
+            },
+        }
+        for endpoint_name, query in queries.items():
+            endpoint = getattr(self.actor, endpoint_name)
+            for request in (query, json.dumps(query)):
+                with self.subTest(endpoint=endpoint_name, request_type=type(request).__name__):
+                    response = endpoint(request)
+                    self.assertIsInstance(response, bytes)
+                    self.assertGreater(len(response), 0)
+
     def test_matrix_pbf_alias(self):
         query = {
             "sources": self.locations[:1],
