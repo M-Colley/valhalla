@@ -542,7 +542,7 @@ TEST(locate, basic_properties) {
   };
   using FormOfWay = OpenLR::LocationReferencePoint::FormOfWay;
   const std::vector<FormOfWay> expected_forms = {
-      FormOfWay::MOTORWAY,
+      FormOfWay::SINGLE_CARRIAGEWAY, // AB has no oneway tag
       FormOfWay::SINGLE_CARRIAGEWAY,
       FormOfWay::OTHER,
       FormOfWay::SLIPROAD,
@@ -643,6 +643,30 @@ TEST(locate, basic_properties) {
   EXPECT_TRUE(result.options().locations(0).correlation().filtered_edges().empty());
   EXPECT_EQ(result.info().warnings_size(), 1);
   EXPECT_EQ(result.info().warnings(0).code(), 215);
+}
+
+TEST(locate, oneway_motorway_openlr) {
+  const auto layout = gurka::detail::map_to_coordinates("A---1---B", 100);
+  const gurka::ways ways = {{"AB", {{"highway", "motorway"}, {"oneway", "yes"}}}};
+  auto map = gurka::buildtiles(layout, ways, {}, {},
+                               VALHALLA_BUILD_DIR "test/data/gurka_locate_oneway_motorway");
+  std::string json;
+  gurka::do_action(valhalla::Options::locate, map, {"1"}, "none", {}, nullptr, &json);
+  rapidjson::Document response;
+  response.Parse(json);
+  ASSERT_FALSE(response.HasParseError());
+  const auto* edges = rapidjson::Pointer("/0/edges").Get(response);
+  ASSERT_NE(edges, nullptr);
+  ASSERT_TRUE(edges->IsArray());
+  ASSERT_FALSE(edges->Empty());
+  for (const auto& edge : edges->GetArray()) {
+    const auto* linear_reference = rapidjson::Pointer("/linear_reference").Get(edge);
+    ASSERT_NE(linear_reference, nullptr);
+    const baldr::OpenLR::OpenLr reference(linear_reference->GetString(), true);
+    ASSERT_FALSE(reference.lrps.empty());
+    for (const auto& lrp : reference.lrps)
+      EXPECT_EQ(lrp.fow, OpenLR::LocationReferencePoint::MOTORWAY);
+  }
 }
 
 TEST(locate, locate_shoulder) {
