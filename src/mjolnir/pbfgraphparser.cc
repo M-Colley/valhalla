@@ -4217,77 +4217,80 @@ struct graph_parser {
         // restriction = x with except tags; change to a complex
         // restriction with modes.
         // if probable restriction, change to a complex restriction
+        const bool has_via_ways = !vias.empty();
         if (vias.size() == 0 && (isTypeRestriction || isConditional || isProbable ||
                                  (!isTypeRestriction && except.size()))) {
 
           restriction.set_via(0);
           vias.push_back(restriction.to());
           osmdata_.via_set.insert(restriction.to());
+        }
 
-          if (isConditional) {
-            restriction.set_modes(modes);
-            // simple restriction, but is a timed restriction
-            // change to complex and set date and time info
-            if (condition.empty()) {
-              if (!day_start.empty() && !day_end.empty()) {
-                condition = day_start + '-' + day_end;
+        if (isConditional) {
+          restriction.set_modes(modes);
+          if (condition.empty()) {
+            if (!day_start.empty() && !day_end.empty()) {
+              condition = day_start + '-' + day_end;
+            }
+            // do we have multiple times entered?
+            if (!has_multiple_times) {
+              // no we do not...add the hours to the condition
+              if (!hour_start.empty() && !hour_end.empty()) {
+                condition += ' ' + hour_start + '-' + hour_end;
               }
-              // do we have multiple times entered?
-              if (!has_multiple_times) {
-                // no we do not...add the hours to the condition
-                if (!hour_start.empty() && !hour_end.empty()) {
-                  condition += ' ' + hour_start + '-' + hour_end;
-                }
-              }
-              // yes multiple times
-              // 06:00;17:00
-              // 11:00;20:00
-              else {
-                std::vector<std::string> hour_on = GetTagTokens(hour_start, ';');
-                std::vector<std::string> hour_off = GetTagTokens(hour_end, ';');
+            }
+            // yes multiple times
+            // 06:00;17:00
+            // 11:00;20:00
+            else {
+              std::vector<std::string> hour_on = GetTagTokens(hour_start, ';');
+              std::vector<std::string> hour_off = GetTagTokens(hour_end, ';');
 
-                if (hour_on.size() > 1 && hour_on.size() == hour_off.size()) {
-                  std::string hours;
-                  // convert to the format of 07:30-09:30,17:30-19:30
-                  for (uint32_t i = 0; i < hour_on.size(); i++) {
-                    if (!hours.empty()) {
-                      hours += ",";
-                    }
-                    hours += hour_on.at(i) + "-";
-                    hours += hour_off.at(i);
+              if (hour_on.size() > 1 && hour_on.size() == hour_off.size()) {
+                std::string hours;
+                // convert to the format of 07:30-09:30,17:30-19:30
+                for (uint32_t i = 0; i < hour_on.size(); i++) {
+                  if (!hours.empty()) {
+                    hours += ",";
                   }
-                  condition += " " + hours;
-                } else {
-                  return; // should not make it here; has to be bad data.
+                  hours += hour_on.at(i) + "-";
+                  hours += hour_off.at(i);
                 }
-              } // else
-            }   // if (condition.empty())
-
-            // could have multiple time domains
-            const std::vector<uint64_t> values = get_time_range(condition);
-            if (values.empty()) {
-              return; // bad data
-            }
-
-            restriction.set_vias(vias);
-            // for bi-directional we need to create the restriction in reverse.  flip the to and
-            // from. also in order to avoid duplicate data in the from and to restrictions, we
-            // only need to store the mode, from, and to for the to_restrictions.
-            for (const auto from_id : froms) {
-              restriction.set_from(from_id);
-              to_restriction.set_from(restriction.to());
-              to_restriction.set_to(from_id);
-              to_restriction.set_modes(restriction.modes());
-              complex_restrictions_to_->push_back(to_restriction);
-
-              for (const auto& v : values) {
-                restriction.set_time_domain(v);
-                complex_restrictions_from_->push_back(restriction);
+                condition += " " + hours;
+              } else {
+                return; // should not make it here; has to be bad data.
               }
+            } // else
+          }   // if (condition.empty())
+
+          // could have multiple time domains
+          const std::vector<uint64_t> values = get_time_range(condition);
+          if (values.empty()) {
+            return; // bad data
+          }
+
+          restriction.set_vias(vias);
+          if (has_via_ways)
+            osmdata_.via_set.insert(restriction.to());
+          // for bi-directional we need to create the restriction in reverse.  flip the to and
+          // from. also in order to avoid duplicate data in the from and to restrictions, we
+          // only need to store the mode, from, and to for the to_restrictions.
+          for (const auto from_id : froms) {
+            if (has_via_ways)
+              osmdata_.via_set.insert(from_id);
+            restriction.set_from(from_id);
+            to_restriction.set_from(restriction.to());
+            to_restriction.set_to(from_id);
+            to_restriction.set_modes(restriction.modes());
+            complex_restrictions_to_->push_back(to_restriction);
+
+            for (const auto& v : values) {
+              restriction.set_time_domain(v);
+              complex_restrictions_from_->push_back(restriction);
             }
-            return;
-          } // if (isConditional)
-        }   // end turning into complex restriction
+          }
+          return;
+        } // if (isConditional)
 
         restriction.set_modes(modes);
 

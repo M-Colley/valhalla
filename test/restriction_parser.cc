@@ -1,3 +1,4 @@
+#include "baldr/timedomain.h"
 #include "midgard/sequence.h"
 #include "mjolnir/pbfgraphparser.h"
 
@@ -203,6 +204,78 @@ TEST(RestrictionParser, LaneConnectivityPreservesWayIds) {
     EXPECT_EQ(found->second.from_way_id, from);
     EXPECT_EQ(result.data.name_offset_map.name(found->second.from_lanes_index), "1|2");
     EXPECT_EQ(result.data.name_offset_map.name(found->second.to_lanes_index), "2|3");
+  }
+}
+
+TEST(RestrictionParser, ConditionalViaWayPreservesTimeDomains) {
+  const auto result = parse_restriction({{"type", "restriction"},
+                                         {"restriction:conditional",
+                                          "no_left_turn @ (Mo-Fr 08:00-10:00,16:00-18:00)"},
+                                         {"except", "bus"}},
+                                        {kFirstFrom}, true);
+  EXPECT_TRUE(result.data.restrictions.empty());
+  ASSERT_EQ(result.from.size(), 2);
+  ASSERT_EQ(result.to.size(), 1);
+  std::set<unsigned> begin_hours, end_hours;
+  for (const auto& restriction : result.from) {
+    EXPECT_EQ(restriction.type(), RestrictionType::kNoLeftTurn);
+    EXPECT_EQ(restriction.from(), kFirstFrom);
+    EXPECT_EQ(restriction.to(), kTo);
+    EXPECT_EQ(restriction.vias(), std::vector<uint64_t>{kVia});
+    EXPECT_TRUE(restriction.modes() & kAutoAccess);
+    EXPECT_FALSE(restriction.modes() & kBusAccess);
+    EXPECT_NE(restriction.time_domain(), 0);
+    const TimeDomain domain(restriction.time_domain());
+    begin_hours.insert(domain.begin_hrs());
+    end_hours.insert(domain.end_hrs());
+  }
+  EXPECT_EQ(begin_hours, (std::set<unsigned>{8, 16}));
+  EXPECT_EQ(end_hours, (std::set<unsigned>{10, 18}));
+  EXPECT_EQ(result.to.front().from(), kTo);
+  EXPECT_EQ(result.to.front().to(), kFirstFrom);
+  EXPECT_EQ(result.to.front().modes(), result.from.front().modes());
+  for (const auto way : {kFirstFrom, kVia, kTo})
+    EXPECT_TRUE(result.data.via_set.contains(way));
+}
+
+TEST(RestrictionParser, ConditionalNoEntryViaWayMultipleFrom) {
+  const auto result =
+      parse_restriction({{"type", "restriction"},
+                         {"restriction:conditional", "no_entry @ (Mo-Fr 08:00-10:00)"}},
+                        {kFirstFrom, kSecondFrom}, true);
+  expect_complex_froms(result, true);
+  for (const auto& restriction : result.from) {
+    EXPECT_NE(restriction.time_domain(), 0);
+    EXPECT_EQ(restriction.type(), RestrictionType::kNoEntry);
+    EXPECT_EQ(restriction.vias(), std::vector<uint64_t>{kVia});
+  }
+  for (const auto way : {kFirstFrom, kSecondFrom, kVia, kTo})
+    EXPECT_TRUE(result.data.via_set.contains(way));
+}
+
+TEST(RestrictionParser, DeprecatedTimedViaWayPreservesTimeDomain) {
+  const auto result = parse_restriction({{"type", "restriction"},
+                                         {"restriction:bus", "no_left_turn"},
+                                         {"hour_on", "07:00"},
+                                         {"hour_off", "09:00"}},
+                                        {kFirstFrom}, true);
+  ASSERT_EQ(result.from.size(), 1);
+  const TimeDomain domain(result.from.front().time_domain());
+  EXPECT_NE(domain.td_value(), 0);
+  EXPECT_EQ(domain.begin_hrs(), 7);
+  EXPECT_EQ(domain.end_hrs(), 9);
+  EXPECT_TRUE(result.from.front().modes() & kBusAccess);
+  EXPECT_FALSE(result.from.front().modes() & kAutoAccess);
+}
+
+TEST(RestrictionParser, InvalidConditionalViaWayStaysRejected) {
+  for (const bool via_way : {false, true}) {
+    const auto result = parse_restriction({{"type", "restriction"},
+                                           {"restriction:conditional", "no_left_turn @ invalid"}},
+                                          {kFirstFrom}, via_way);
+    EXPECT_TRUE(result.from.empty());
+    EXPECT_TRUE(result.to.empty());
+    EXPECT_TRUE(result.data.restrictions.empty());
   }
 }
 
