@@ -5,7 +5,9 @@
 #include <gtest/gtest.h>
 #include <osmium/builder/osm_object_builder.hpp>
 
+#include <array>
 #include <string>
+#include <utility>
 
 using namespace valhalla;
 
@@ -151,6 +153,38 @@ TEST(Lua, TestForwardBackward) {
   ASSERT_TRUE(results.count("maxweight_forward") == 1);
   ASSERT_TRUE(results.count("maxweight_backward") == 1);
 }
+
+TEST(Lua, RoadsWithRailsKeepRoadClassification) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const auto& highway : {std::pair{"residential", "6"}, std::pair{"primary", "2"}}) {
+    TagsBuilder tags;
+    tags.insert({"highway", highway.first});
+    tags.insert({"railway", "rail"});
+    const auto result = lua.Transform(mjolnir::OSMType::kWay, 1, tags.get());
+    EXPECT_EQ(result.at("auto_forward"), "true");
+    EXPECT_EQ(result.at("rail"), "false");
+    EXPECT_EQ(result.at("road_class"), highway.second);
+  }
+}
+TEST(Lua, ShuttleTrainClassificationRequiresAutoAccess) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const auto& value :
+       {std::array{"shuttle_train", "yes", "true"}, std::array{"shuttle_train", "no", "false"},
+        std::array{"ferry", "yes", "false"}}) {
+    TagsBuilder tags;
+    tags.insert({"route", value[0]});
+    tags.insert({"railway", "rail"});
+    tags.insert({"motorcar", value[1]});
+    EXPECT_EQ(lua.Transform(mjolnir::OSMType::kWay, 1, tags.get()).at("rail"), value[2]);
+  }
+  TagsBuilder shuttle;
+  shuttle.insert({"route", "shuttle_train"});
+  EXPECT_EQ(lua.Transform(mjolnir::OSMType::kWay, 1, shuttle.get()).at("rail"), "true");
+  TagsBuilder road;
+  road.insert({"highway", "residential"});
+  EXPECT_EQ(lua.Transform(mjolnir::OSMType::kWay, 1, road.get()).at("rail"), "false");
+}
+
 } // namespace
 
 // TODO: sweet jesus add more tests of this class!
