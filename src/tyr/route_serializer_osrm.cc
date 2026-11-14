@@ -2108,6 +2108,10 @@ std::string serialize(valhalla::Api& api) {
   AttributesController controller(options);
   auto json = json::map({});
 
+  if (options.has_id_case()) {
+    json->emplace("id", options.id());
+  }
+
   // If here then the route succeeded. Set status code to OK and serialize waypoints (locations).
   std::string status("Ok");
   json->emplace("code", status);
