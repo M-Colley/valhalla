@@ -101,6 +101,9 @@ public:
                               const bool rings_only = false,
                               const float denoise = 1.f,
                               const float generalize = 200.f) const {
+    if (intervals.empty()) {
+      return {};
+    }
     // sort the contours first on the metric index then on the values with the bigger contours first
     std::sort(intervals.begin(), intervals.end(), std::greater<>());
 
