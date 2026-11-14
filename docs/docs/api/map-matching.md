@@ -55,11 +55,14 @@ You can also set `directions_options` to specify output units, language, and whe
 | `trace_options` | Additional options. |
 | `trace_options.search_radius` | Search radius in meters associated with supplied trace points. |
 | `trace_options.gps_accuracy` | GPS accuracy in meters associated with supplied trace points. |
+| `trace_options.turn_penalty_factor` | Turn penalty factor used by map matching. |
 | `trace_options.breakage_distance` | Breaking distance in meters between trace points. |
 | `trace_options.interpolation_distance` | Interpolation distance in meters beyond which trace points are merged together. |
 | `linear_references` | When present and `true`, the successful `trace_route` response will include a key `linear_references`. Its value is an array of base64-encoded [OpenLR location references][openlr], one for each graph edge of the road network matched by the input trace. |
 
 [openlr]: https://www.openlr-association.com/fileadmin/user_upload/openlr-whitepaper_v1.5.pdf
+
+The five supported trace options above (`search_radius`, `gps_accuracy`, `turn_penalty_factor`, `breakage_distance`, and `interpolation_distance`) are subject to the server's `meili.customizable` allowlist. A supplied supported option outside that list retains its configured Meili value and produces warning `217`. Input validation can still use a supplied `breakage_distance` to reject a trace, even when that option cannot customize Meili.
 
 ### Attribute filters (`trace_attributes` only)
 

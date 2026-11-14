@@ -108,9 +108,11 @@ void thor_worker_t::trace_route(Api& request) {
         LOG_WARN(ShapeMatch_Enum_Name(options.shape_match()) +
                  " algorithm failed to find exact route match; Falling back to map_match...");
         try {
-          // Reset request to avoid `route_match` interference
+          // Preserve warnings while resetting the partial edge-walk result.
+          auto warnings = request.info().warnings();
           request.Clear();
           request.mutable_options()->CopyFrom(options);
+          request.mutable_info()->mutable_warnings()->Swap(&warnings);
 
           map_match(request);
         } catch (const valhalla_exception_t& e) {

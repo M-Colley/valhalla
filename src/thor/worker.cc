@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 using namespace valhalla;
 using namespace valhalla::midgard;
@@ -330,6 +331,31 @@ void thor_worker_t::parse_measurements(const Api& request) {
                              pt.type()});
     }
   } catch (...) { throw valhalla_exception_t{424}; }
+}
+
+void thor_worker_t::parse_measurements(Api& request) {
+  parse_measurements(static_cast<const Api&>(request));
+  const auto& options = request.options();
+  const auto& config = matcher->config();
+  const std::pair<bool, const char*> ignored[] =
+      {{options.has_search_radius_case() && !config.candidate_search.is_search_radius_customizable,
+        "search_radius"},
+       {options.has_turn_penalty_factor_case() &&
+            !config.transition_cost.is_turn_penalty_factor_customizable,
+        "turn_penalty_factor"},
+       {options.has_gps_accuracy_case() && !config.emission_cost.is_gps_accuracy_customizable,
+        "gps_accuracy"},
+       {options.has_breakage_distance_case() &&
+            !config.transition_cost.is_breakage_distance_customizable,
+        "breakage_distance"},
+       {options.has_interpolation_distance_case() &&
+            !config.routing.is_interpolation_distance_customizable,
+        "interpolation_distance"}};
+  for (const auto& option : ignored) {
+    if (option.first) {
+      add_warning(request, 217, option.second);
+    }
+  }
 }
 
 void thor_worker_t::log_admin(const valhalla::TripLeg& trip_path) {
