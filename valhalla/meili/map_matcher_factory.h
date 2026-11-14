@@ -35,6 +35,9 @@ public:
   MapMatcher* Create(const Costing::Type costing_type) {
     Options options;
     options.set_costing_type(costing_type);
+    const rapidjson::Document doc;
+    google::protobuf::RepeatedPtrField<CodedDescription> warnings;
+    sif::ParseCosting(doc, "/costing_options", options, warnings);
     return Create(options);
   }
 

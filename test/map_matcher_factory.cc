@@ -256,6 +256,19 @@ TEST(MapMatcherFactory, TestMapMatcherFactory) {
   }
 }
 
+TEST(MapMatcherFactory, TypeOnlyUsesDefaultCosting) {
+  meili::MapMatcherFactory factory(test::make_config("/data/valhalla"));
+  for (const auto type : {Costing::auto_, Costing::bicycle, Costing::pedestrian}) {
+    SCOPED_TRACE(Costing_Enum_Name(type));
+    Api api;
+    create_costing_options(type, *api.mutable_options(), *api.mutable_info()->mutable_warnings());
+    const std::unique_ptr<meili::MapMatcher> expected(factory.Create(api.options()));
+    const std::unique_ptr<meili::MapMatcher> actual(factory.Create(type));
+    EXPECT_EQ(actual->travelmode(), expected->travelmode());
+    EXPECT_FLOAT_EQ(actual->costing()->AStarCostFactor(), expected->costing()->AStarCostFactor());
+  }
+}
+
 TEST(MapMatcherFactory, TestMapMatcher) {
   const auto root = test::make_config("/data/valhalla");
 
