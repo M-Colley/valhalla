@@ -13,6 +13,8 @@
 #include <valhalla/sif/transitcost.h>
 #include <valhalla/sif/truckcost.h>
 
+#include <rapidjson/document.h>
+
 #include <functional>
 #include <map>
 
@@ -82,7 +84,15 @@ public:
    */
   cost_ptr_t Create(Costing::Type costing_type) const {
     Costing default_costing;
-    default_costing.set_type(costing_type);
+    if (Costing::Type_IsValid(costing_type)) {
+      const rapidjson::Document doc;
+      google::protobuf::RepeatedPtrField<CodedDescription> warnings;
+      // Protobuf zero values differ from the costing defaults used by parsed requests.
+      ParseCosting(doc, "", &default_costing, warnings, costing_type);
+    } else {
+      // Custom registrations can use types outside the built-in enum.
+      default_costing.set_type(costing_type);
+    }
     return Create(default_costing);
   }
 
