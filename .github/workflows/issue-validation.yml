@@ -59,13 +59,17 @@ jobs:
         run: |
           set -o pipefail
           cd build
+          set +e
           status=0
           for test in test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
             test/graphtile test/transitdeparture test/gurka/gurka_gtfs test/multimodalbuilder \
             test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames test/gridded_data \
             test/restriction_parser test/gurka/gurka_simple_restrictions test/thor_worker test/mapmatch \
             test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
-            "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log" || status=1
+            "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log"
+            code=${PIPESTATUS[0]}
+            printf '%s exit=%s\n' "$test" "$code" | tee -a ../validation-logs/cpp-exit-codes.log
+            if (( code != 0 )); then status=1; fi
           done
           exit "$status"
       - name: Run Python actor config and speed tests
