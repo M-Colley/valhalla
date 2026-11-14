@@ -45,11 +45,22 @@ TEST(LaneConnectivity, LargeWayIdsSurviveStagedBuild) {
   // Intermediate records must be regenerated when their layout changes.
   {
     std::ofstream file(workdir + "/osmdata_lane_connectivity.bin", std::ios::binary);
+    ASSERT_TRUE(file.is_open());
     const uint32_t count = 1;
     const std::array<uint64_t, 3> old_record{};
     file.write(reinterpret_cast<const char*>(&count), sizeof(count));
     file.write(reinterpret_cast<const char*>(old_record.data()), sizeof(old_record));
+    file.close();
+    ASSERT_TRUE(file);
   }
   mjolnir::OSMData incompatible{};
-  EXPECT_THROW(incompatible.read_from_temp_files(workdir), std::runtime_error);
+  try {
+    incompatible.read_from_temp_files(workdir);
+    FAIL() << "Expected incompatible lane connectivity data to be rejected";
+  } catch (const std::runtime_error& error) {
+    EXPECT_NE(std::string(error.what()).find("Incompatible lane connectivity temporary file"),
+              std::string::npos);
+    EXPECT_NE(std::string(error.what()).find("Restart tile building from parsing"),
+              std::string::npos);
+  }
 }
