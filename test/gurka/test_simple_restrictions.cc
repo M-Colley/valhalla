@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <random>
+#include <unordered_map>
 
 using namespace valhalla;
 
@@ -109,4 +110,60 @@ TEST_F(SimpleRestrictions, IgnoreRestrictionMatching) {
                        {{"/costing_options/auto/ignore_restrictions", "1"}}, {}, nullptr, "break");
   gurka::assert::osrm::expect_steps(result, {"BC", "BE", "DEF"}, true, "matchings");
   gurka::assert::raw::expect_path(result, {"BC", "BE", "DEF"});
+}
+
+TEST(NoEntryRestrictions, MultipleFrom) {
+  const std::string ascii_map = R"(
+    A---1---B---2---C
+    |       |       |
+    G-------H-------I
+            |
+            3
+            D
+  )";
+  const gurka::ways ways = {
+      {"AB", {{"highway", "primary"}}}, {"CB", {{"highway", "primary"}}},
+      {"BH", {{"highway", "primary"}}}, {"AG", {{"highway", "primary"}}},
+      {"GH", {{"highway", "primary"}}}, {"CI", {{"highway", "primary"}}},
+      {"IH", {{"highway", "primary"}}}, {"HD", {{"highway", "primary"}}},
+  };
+  const auto layout = gurka::detail::map_to_coordinates(ascii_map, 50);
+  for (const bool except_bicycle : {false, true}) {
+    SCOPED_TRACE(except_bicycle ? "except bicycle" : "all vehicles");
+    gurka::relation restriction{{{gurka::way_member, "AB", "from"},
+                                 {gurka::way_member, "CB", "from"},
+                                 {gurka::node_member, "B", "via"},
+                                 {gurka::way_member, "BH", "to"}},
+                                {{"type", "restriction"}, {"restriction", "no_entry"}}};
+    if (except_bicycle)
+      restriction.tags["except"] = "bicycle";
+    const auto map =
+        gurka::buildtiles(layout, ways, {}, {restriction},
+                          std::string(VALHALLA_BUILD_DIR "test/data/no_entry_multiple_from_") +
+                              (except_bicycle ? "except" : "simple"),
+                          {{"mjolnir.hierarchy", "false"}, {"mjolnir.concurrency", "1"}});
+    const std::vector<std::unordered_map<std::string, std::string>> algorithms = {
+        {},
+        {{"/date_time/type", "0"}},
+        {{"/date_time/type", "2"}, {"/date_time/value", "2026-01-05T09:00"}},
+    };
+    for (const auto& options : algorithms) {
+      SCOPED_TRACE(options.empty() ? "bidirectional" : options.at("/date_time/type"));
+      auto result = gurka::do_action(Options::route, map, {"1", "3"}, "auto", options);
+      gurka::assert::raw::expect_path(result, {"AB", "AG", "GH", "HD"});
+      result = gurka::do_action(Options::route, map, {"2", "3"}, "auto", options);
+      gurka::assert::raw::expect_path(result, {"CB", "CI", "IH", "HD"});
+      result = gurka::do_action(Options::route, map, {"3", "1"}, "auto", options);
+      gurka::assert::raw::expect_path(result, {"HD", "BH", "AB"});
+
+      result = gurka::do_action(Options::route, map, {"1", "3"}, "bicycle", options);
+      gurka::assert::raw::expect_path(result, except_bicycle
+                                                  ? std::vector<std::string>{"AB", "BH", "HD"}
+                                                  : std::vector<std::string>{"AB", "AG", "GH", "HD"});
+      result = gurka::do_action(Options::route, map, {"2", "3"}, "bicycle", options);
+      gurka::assert::raw::expect_path(result, except_bicycle
+                                                  ? std::vector<std::string>{"CB", "BH", "HD"}
+                                                  : std::vector<std::string>{"CB", "CI", "IH", "HD"});
+    }
+  }
 }
