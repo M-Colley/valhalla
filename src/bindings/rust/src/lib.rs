@@ -444,6 +444,10 @@ mod ffi {
         /// N.B.: The encoding is lossy (2016 -> 200 coefficients). Use [`decode_weekly_speeds`] to
         /// evaluate compression quality if needed.
         ///
+        /// # Errors
+        /// Returns an error if the length is not 2016 or compressed coefficients are non-finite or
+        /// cannot be represented as `i16`.
+        ///
         /// # Examples
         /// ```
         /// // Generate sample weekly speed profile (constant 50 km/h)

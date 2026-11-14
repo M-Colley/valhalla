@@ -476,6 +476,10 @@ fn historical_traffic() {
     assert!(valhalla::encode_weekly_speeds(&[50.0]).is_err());
     assert!(valhalla::encode_weekly_speeds(&[50.0; 3000]).is_err());
 
+    for value in [f32::NAN, 1_000.0, -1_000.0] {
+        assert!(valhalla::encode_weekly_speeds(&[value; 2016]).is_err());
+    }
+
     let speeds = vec![50.0; 2016];
     let encoded = valhalla::encode_weekly_speeds(&speeds).expect("Failed to encode speeds");
     assert!(!encoded.is_empty());
