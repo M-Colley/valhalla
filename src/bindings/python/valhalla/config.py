@@ -37,6 +37,9 @@ def get_config(
     """
     Returns a default Valhalla configuration.
 
+    Tile paths are resolved without requiring both sources to exist. Actor
+    initialization validates that at least one source is available.
+
     :param tile_extract: The file path (with .tar extension) of the tile extract (mjolnir.tile_extract), if present. Preferred over tile_dir.
     :param tile_dir: The directory path where the graph tiles are stored (mjolnir.tile_dir), if present.
     :param verbose: Whether you want to see Valhalla's logs on stdout (mjolnir.logging). Default False.
@@ -45,14 +48,12 @@ def get_config(
     config = _sanitize_config(default_config.copy())
 
     config["mjolnir"]["tile_dir"] = (
-        ""
-        if isinstance(tile_dir, str) and not str(tile_dir)
-        else str(Path(tile_dir).resolve(strict=True))
+        "" if isinstance(tile_dir, str) and not str(tile_dir) else str(Path(tile_dir).resolve())
     )
     config["mjolnir"]["tile_extract"] = (
         ""
         if isinstance(tile_extract, str) and not str(tile_extract)
-        else str(Path(tile_extract).resolve(strict=True))
+        else str(Path(tile_extract).resolve())
     )
     config["logging"]["type"] = "std_out" if verbose else ""
 
