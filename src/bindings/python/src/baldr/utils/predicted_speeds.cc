@@ -29,7 +29,8 @@ void init_predicted_speeds(nb::module_& m) {
         std::array<float, vb::kBucketsPerWeek> aligned_buckets;
         if (reinterpret_cast<std::uintptr_t>(buckets) % alignof(float) != 0) {
           // Contiguous NumPy byte buffers can still start at an unaligned address.
-          std::memcpy(aligned_buckets.data(), buckets, aligned_buckets.size() * sizeof(float));
+          std::memcpy(aligned_buckets.data(), reinterpret_cast<const unsigned char*>(buckets),
+                      aligned_buckets.size() * sizeof(float));
           buckets = aligned_buckets.data();
         }
         auto result = vb::compress_speed_buckets(buckets);
