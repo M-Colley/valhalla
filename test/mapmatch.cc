@@ -1453,10 +1453,10 @@ TEST(Mapmatch, openlr_parameter_true_osrm_api) {
   const auto& matches = response.get_child("matchings");
   EXPECT_EQ(matches.size(), 1);
   const std::vector<std::string>& expected = {
-      "CwOduyULYiKJAAAV//0iGQ==",
-      "CwOdxCULYCKKAAAN//8iGg==",
-      "CwOdySULXyKLAAAf//EiGw==",
-      "CwOd1yULWCKLAQBV/84iGw==",
+      "CwOduyULYiOJAAAV//0jGQ==",
+      "CwOdxCULYCOKAAAN//8jGg==",
+      "CwOdySULXyOLAAAf//EjGw==",
+      "CwOd1yULWCOLAQBV/84jGw==",
   };
   for (const auto& match : matches) {
     std::vector<std::string> references;
@@ -1475,10 +1475,10 @@ TEST(Mapmatch, openlr_parameter_true_native_api) {
   tyr::actor_t actor(conf, true);
   const auto& response = test::json_to_pt(actor.trace_route(request));
   const std::vector<std::string>& expected = {
-      "CwOduyULYiKJAAAV//0iGQ==",
-      "CwOdxCULYCKKAAAN//8iGg==",
-      "CwOdySULXyKLAAAf//EiGw==",
-      "CwOd1yULWCKLAQBV/84iGw==",
+      "CwOduyULYiOJAAAV//0jGQ==",
+      "CwOdxCULYCOKAAAN//8jGg==",
+      "CwOdySULXyOLAAAf//EjGw==",
+      "CwOd1yULWCOLAQBV/84jGw==",
   };
   std::vector<std::string> references;
   for (const auto& reference : response.get_child("trip.linear_references"))
