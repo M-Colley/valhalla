@@ -49,6 +49,11 @@ jobs:
             factory map_matcher_factory graphtile transitdeparture gurka_gtfs multimodalbuilder \
             openlr gurka_locate predictedspeeds uniquenames gridded_data \
             restriction_parser gurka_simple_restrictions thor_worker mapmatch gurka_trace_attributes gurka_lane_connectivity \
+            attributes_controller osmnode gurka_vector_tiles gurka_trace_oneway_probe \
+            aabb2 edgeinfo edgestatus elevation_encoding encode graphreader grid_range_query grid_traversal \
+            isochrone json matrix optimizer parse_request pointll polyline2 reach sample sequence tar tilehierarchy util_odin \
+            gurka_conditional_restrictions gurka_elevation gurka_linear_feature_factors gurka_recost \
+            gurka_route gurka_time_tracking gurka_use_options \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
@@ -66,6 +71,13 @@ jobs:
             test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames test/gridded_data \
             test/restriction_parser test/gurka/gurka_simple_restrictions test/thor_worker test/mapmatch \
             test/gurka/gurka_trace_attributes test/gurka/gurka_lane_connectivity \
+            test/attributes_controller test/osmnode test/gurka/gurka_vector_tiles test/gurka/gurka_trace_oneway_probe \
+            test/aabb2 test/edgeinfo test/edgestatus test/elevation_encoding test/encode test/graphreader \
+            test/grid_range_query test/grid_traversal test/isochrone test/json test/matrix test/optimizer \
+            test/parse_request test/pointll test/polyline2 test/reach test/sample test/sequence test/tar \
+            test/tilehierarchy test/util_odin test/gurka/gurka_conditional_restrictions \
+            test/gurka/gurka_elevation test/gurka/gurka_linear_feature_factors test/gurka/gurka_recost \
+            test/gurka/gurka_route test/gurka/gurka_time_tracking test/gurka/gurka_use_options \
             test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
             "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log"
             code=${PIPESTATUS[0]}
@@ -73,7 +85,14 @@ jobs:
             if (( code != 0 )); then status=1; fi
           done
           exit "$status"
-      - name: Run Python actor config and speed tests
+      - name: Upload C++ validation logs
+        if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-validation-cpp-logs
+          path: validation-logs/
+          retention-days: 14
+      - name: Run Python binding and script tests
         if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
         shell: bash
         run: |
@@ -82,28 +101,66 @@ jobs:
           export LOCPATH="$GITHUB_WORKSPACE/locales"
           export PYTHONPATH="$GITHUB_WORKSPACE/build/src/bindings/python"
           status=0
-          for suite in actor config predicted_speeds; do
+          for suite in actor config predicted_speeds graph_utils; do
             python -m unittest discover -s "$GITHUB_WORKSPACE/test/bindings/python" -p "test_${suite}.py" -v \
               2>&1 | tee "../validation-logs/python-${suite}.log" || status=1
           done
+          export PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/build/src/bindings/python/valhalla"
+          for suite in elevation extract; do
+            python -m unittest discover -s "$GITHUB_WORKSPACE/test/scripts" -p "test_valhalla_build_${suite}.py" -v \
+              2>&1 | tee "../validation-logs/python-script-${suite}.log" || status=1
+          done
           exit "$status"
-      - name: Run Rust historical speed binding test
-        if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
-        shell: bash
-        env:
-          CARGO_BUILD_JOBS: 2
-          CMAKE_BUILD_PARALLEL_LEVEL: 2
-        run: |
-          set -o pipefail
-          rustup toolchain install stable --profile minimal --no-self-update 2>&1 | tee validation-logs/rust-setup.log
-          rustup default stable 2>&1 | tee -a validation-logs/rust-setup.log
-          cargo test --release --test tiles_test historical_traffic -- --exact \
-            2>&1 | tee validation-logs/rust-predicted-speeds.log
       - name: Upload validation logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: issue-validation-logs
           path: validation-logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+  baseline_trace_oneway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: c0c821a3df608cedb79522334aac97f958eaba7a
+          submodules: recursive
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p baseline-trace-logs
+          ./scripts/install-linux-deps.sh --no-prime-server 2>&1 | tee baseline-trace-logs/deps.log
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: baseline-trace-c0-${{ runner.os }}
+      - name: Configure and build
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
+            -DENABLE_DATA_TOOLS=ON -DENABLE_SERVICES=OFF -DENABLE_TESTS=ON \
+            -DENABLE_PYTHON_BINDINGS=OFF -DENABLE_CCACHE=ON -DLOGGING_LEVEL=ALL \
+            -DENABLE_SINGLE_FILES_WERROR=OFF 2>&1 | tee baseline-trace-logs/configure.log
+          cmake --build build --parallel 2 --target gurka_trace_attributes \
+            2>&1 | tee baseline-trace-logs/build.log
+      - name: Run unchanged baseline trace test
+        shell: bash
+        run: |
+          set -o pipefail
+          cd build
+          ./test/gurka/gurka_trace_attributes \
+            --gtest_filter=Standalone.BackwardTraceOnOnewayEdge \
+            2>&1 | tee ../baseline-trace-logs/baseline-test.log
+      - name: Upload baseline trace logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-trace-oneway
+          path: baseline-trace-logs/
           if-no-files-found: warn
           retention-days: 14
