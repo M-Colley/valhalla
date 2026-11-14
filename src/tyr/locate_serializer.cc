@@ -14,16 +14,20 @@ using namespace valhalla::baldr;
 namespace {
 
 OpenLR::LocationReferencePoint::FormOfWay get_fow(const baldr::DirectedEdge* de) {
-  if (de->classification() == valhalla::baldr::RoadClass::kMotorway)
-    return OpenLR::LocationReferencePoint::MOTORWAY;
-  else if (de->roundabout())
+  const bool forward = de->forwardaccess() & kVehicularAccess;
+  const bool reverse = de->reverseaccess() & kVehicularAccess;
+  const bool one_way = forward != reverse;
+  if (de->roundabout())
     return OpenLR::LocationReferencePoint::ROUNDABOUT;
   else if (de->use() == valhalla::baldr::Use::kRamp ||
            de->use() == valhalla::baldr::Use::kTurnChannel)
     return OpenLR::LocationReferencePoint::SLIPROAD;
-  else if ((de->forwardaccess() & kVehicularAccess) && (de->reverseaccess() & kVehicularAccess))
+  else if (de->classification() == valhalla::baldr::RoadClass::kMotorway && one_way)
+    return OpenLR::LocationReferencePoint::MOTORWAY;
+  // Match the route serializer's historical high-class one-way approximation.
+  else if (de->classification() <= valhalla::baldr::RoadClass::kTertiary && one_way)
     return OpenLR::LocationReferencePoint::MULTIPLE_CARRIAGEWAY;
-  else if ((de->forwardaccess() & kVehicularAccess) || (de->reverseaccess() & kVehicularAccess))
+  else if (de->classification() <= valhalla::baldr::RoadClass::kTertiary && forward && reverse)
     return OpenLR::LocationReferencePoint::SINGLE_CARRIAGEWAY;
 
   return OpenLR::LocationReferencePoint::OTHER;
