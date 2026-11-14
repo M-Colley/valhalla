@@ -1271,18 +1271,6 @@ function filter_tags_generic(kv)
     oneway_motorcycle = oneway[kv["oneway:motorcycle"]]
   end
 
-  if kv["pedestrian_backward"] == nil then
-      kv["pedestrian_backward"] = "false"
-  end
-
-  if ((kv["oneway"] == "yes" and kv["oneway:foot"] == "no") or kv["foot:backward"] == "yes") then
-    kv["pedestrian_backward"] = "true"
-  end
-
-  if kv["pedestrian_backward"] == "true" then
-    oneway_foot = oneway[kv["oneway:foot"]]
-  end
-
   local oneway_reverse = kv["oneway"]
   local oneway_norm = oneway[kv["oneway"]]
   if kv["junction"] == "roundabout" or kv["junction"] == "circular" then
@@ -1335,18 +1323,6 @@ function filter_tags_generic(kv)
         kv["motorcycle_forward"] = "true"
       end
     end
-    if (kv["highway"] == "footway" or kv["highway"] == "pedestrian" or kv["highway"] == "steps" or kv["highway"] == "path" or kv["oneway:foot"]) then --don't apply oneway tag unless oneway:foot or pedestrian only way
-      if kv["pedestrian_backward"] == "true" then
-        if (oneway_foot == "true") then --pedestrian only in reverse direction on street
-          kv["pedestrian_forward"] = "false"
-        elseif oneway_foot == "false" then
-          kv["pedestrian_forward"] = "true"
-        end
-      end
-    else
-      kv["pedestrian_backward"] = kv["pedestrian_forward"]
-    end
-
   -- what on earth is going on here? if there is no oneway tagging we say the way is bidirectional despite all the
   -- backward/forward crap we did above? this has to be the most common case (no oneway tag) so why on earth does it
   -- reset any of the other directional tagging that is parsed above?
@@ -1379,11 +1355,6 @@ function filter_tags_generic(kv)
        (kv["oneway:motorcycle"] == nil or oneway[kv["oneway:motorcycle"]] == false or kv["oneway:motorcycle"] == "no")) then
       kv["motorcycle_backward"] = kv["motorcycle_forward"]
     end
-
-    if (kv["pedestrian_backward"] == "false" and (kv["oneway:foot"] == nil or oneway[kv["oneway:foot"]] == false or kv["oneway:foot"] == "no")) then
-      kv["pedestrian_backward"] = kv["pedestrian_forward"]
-    end
-
   end
 
   --Bike forward / backward overrides.
@@ -1412,9 +1383,6 @@ function filter_tags_generic(kv)
                         access_forward or kv["moped_forward"]
   kv["motorcycle_forward"] = any_in(motor_vehicle, kv["motorcycle:forward"]) or access_forward or
                              kv["motorcycle_forward"]
-  if kv["foot:forward"] ~= nil then
-    kv["pedestrian_forward"] = any_in(foot, kv["foot:forward"])
-  end
   local bk_forward = kv["bicycle:forward"] or kv["vehicle:forward"]
   if bk_forward ~= nil then
     kv["bike_forward"] = any_in(bicycle, bk_forward)
@@ -1433,9 +1401,6 @@ function filter_tags_generic(kv)
                          access_backward or kv["moped_backward"]
   kv["motorcycle_backward"] = any_in(motor_vehicle, kv["motorcycle:backward"]) or access_backward or
                               kv["motorcycle_backward"]
-  if kv["foot:backward"] ~= nil then
-    kv["pedestrian_backward"] = any_in(foot, kv["foot:backward"])
-  end
   local bk_backward = kv["bicycle:backward"] or kv["vehicle:backward"]
   if bk_backward ~= nil then
     kv["bike_backward"] = any_in(bicycle, bk_backward)
@@ -1477,11 +1442,6 @@ function filter_tags_generic(kv)
     forwards = kv["motorcycle_forward"]
     kv["motorcycle_forward"] = kv["motorcycle_backward"]
     kv["motorcycle_backward"] = forwards
-
-    forwards = kv["pedestrian_forward"]
-    kv["pedestrian_forward"] = kv["pedestrian_backward"]
-    kv["pedestrian_backward"] = forwards
-
   end
 
   if kv["oneway:bicycle"] == "-1" then
@@ -1502,12 +1462,6 @@ function filter_tags_generic(kv)
     kv["motorcycle_backward"] = forwards
   end
 
-  if kv["oneway:foot"] == "-1" then
-    local forwards = kv["pedestrian_forward"]
-    kv["pedestrian_forward"] = kv["pedestrian_backward"]
-    kv["pedestrian_backward"] = forwards
-  end
-
   if kv["oneway:bus"] == "-1" then
     local forwards = kv["bus_forward"]
     kv["bus_forward"] = kv["bus_backward"]
@@ -1518,6 +1472,30 @@ function filter_tags_generic(kv)
     local forwards = kv["taxi_forward"]
     kv["taxi_forward"] = kv["taxi_backward"]
     kv["taxi_backward"] = forwards
+  end
+
+  -- Pedestrian direction tags refer to the geometry independently of vehicle oneways.
+  local oneway_foot = kv["oneway:foot"]
+  local conveying = kv["conveying"]
+  if oneway_foot == nil and (kv["highway"] == "steps" or kv["highway"] == "footway") and
+     (conveying == "yes" or conveying == "forward" or
+      conveying == "backward" or conveying == "reversible") and
+     oneway_norm == "true" then
+    oneway_foot = oneway_reverse == "-1" and "-1" or "yes"
+  end
+  kv["pedestrian_backward"] = kv["pedestrian_forward"]
+  if oneway[oneway_foot] == "true" then
+    if oneway_foot == "-1" then
+      kv["pedestrian_forward"] = "false"
+    else
+      kv["pedestrian_backward"] = "false"
+    end
+  end
+  if kv["foot:forward"] ~= nil then
+    kv["pedestrian_forward"] = any_in(foot, kv["foot:forward"])
+  end
+  if kv["foot:backward"] ~= nil then
+    kv["pedestrian_backward"] = any_in(foot, kv["foot:backward"])
   end
 
   --if none of the modes were set we are done looking at this
