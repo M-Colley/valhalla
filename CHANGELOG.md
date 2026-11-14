@@ -4,6 +4,7 @@
    * FIXED: preserve highway classification for roads sharing railway tracks.
    * FIXED: preserve access restrictions and oneway rules when bus lane counts are present.
    * FIXED: use configured pedestrian and bicycle speeds for maneuver guidance.
+   * FIXED: honor motor_vehicle node access for motorcycles and mopeds.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)
