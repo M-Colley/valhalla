@@ -48,7 +48,7 @@ jobs:
           cmake --build build --parallel 2 --target lua maneuversbuilder actor \
             factory map_matcher_factory graphtile transitdeparture gurka_gtfs multimodalbuilder \
             openlr gurka_locate predictedspeeds uniquenames gridded_data \
-            restriction_parser gurka_simple_restrictions \
+            restriction_parser gurka_simple_restrictions thor_worker mapmatch \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
@@ -67,6 +67,10 @@ jobs:
             test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
             "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log" || status=1
           done
+          test/thor_worker --gtest_filter=ThorWorker.test_linear_references \
+            2>&1 | tee ../validation-logs/thor_worker-openlr.log || status=1
+          test/mapmatch --gtest_filter='Mapmatch.openlr_parameter_*' \
+            2>&1 | tee ../validation-logs/mapmatch-openlr.log || status=1
           exit "$status"
       - name: Run Python actor config and speed tests
         if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
