@@ -74,8 +74,10 @@ bool WalkTransitLines(const GraphId& n_graphId,
     // all should be a transit lines, but make sure.
     if (de->IsTransitLine()) {
 
-      const TransitDeparture* departure =
-          endnodetile->GetNextDeparture(de->lineid(), localtime, day, dow, false, false, false);
+      // The walk can replace endnodetile before this borrowed departure is released.
+      const auto departure_tile = endnodetile;
+      const transit_departure_ptr departure(
+          departure_tile->GetNextDeparture(de->lineid(), localtime, day, dow, false, false, false));
 
       // Don't want to walk an edge at a particular time more than once.
       bool visited = false;
