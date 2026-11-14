@@ -45,6 +45,37 @@ class TestPredictedSpeeds(unittest.TestCase):
                 msg=f"Bucket {bucket_idx} decompression error",
             )
 
+    def test_compress_sliced_speed_values(self):
+        speeds = (np.arange(BUCKETS_PER_WEEK * 2, dtype=np.float32) % 71 + 5)[::2]
+        self.assertFalse(speeds.flags.c_contiguous)
+        np.testing.assert_array_equal(
+            compress_speed_buckets(speeds),
+            compress_speed_buckets(np.ascontiguousarray(speeds)),
+        )
+
+    def test_compress_reversed_speed_values(self):
+        speeds = (np.arange(BUCKETS_PER_WEEK, dtype=np.float32) % 71 + 5)[::-1]
+        np.testing.assert_array_equal(
+            compress_speed_buckets(speeds),
+            compress_speed_buckets(np.ascontiguousarray(speeds)),
+        )
+
+    def test_compress_read_only_speeds(self):
+        speeds = np.full(BUCKETS_PER_WEEK, 50.0, dtype=np.float32)
+        expected = compress_speed_buckets(speeds)
+        speeds.setflags(write=False)
+        np.testing.assert_array_equal(compress_speed_buckets(speeds), expected)
+
+    def test_compress_unaligned_speed_values(self):
+        storage = bytearray(BUCKETS_PER_WEEK * np.dtype(np.float32).itemsize + 1)
+        speeds = np.ndarray((BUCKETS_PER_WEEK,), dtype=np.float32, buffer=storage, offset=1)
+        speeds[:] = np.arange(BUCKETS_PER_WEEK, dtype=np.float32) % 71 + 5
+        self.assertTrue(speeds.flags.c_contiguous)
+        self.assertFalse(speeds.flags.aligned)
+        np.testing.assert_array_equal(
+            compress_speed_buckets(speeds), compress_speed_buckets(speeds.copy())
+        )
+
     def test_compress_decompress_sine_wave(self):
         """Test round-trip with sine wave pattern (like C++ test)."""
         # Generate synthetic speeds: 30 + 15 * sin(x/20)

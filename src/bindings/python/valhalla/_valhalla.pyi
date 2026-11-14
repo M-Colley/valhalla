@@ -393,9 +393,11 @@ SPEED_BUCKET_SIZE_MINUTES: int = 5
 
 SPEED_BUCKET_SIZE_SECONDS: int = 300
 
-def compress_speed_buckets(speeds: Annotated[NDArray[numpy.float32], dict(shape=(2016))]) -> Annotated[NDArray[numpy.int16], dict(shape=(200))]:
+def compress_speed_buckets(speeds: Annotated[NDArray[numpy.float32], dict(shape=(2016), order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.int16], dict(shape=(200))]:
     """
     Compress 2016 speed buckets into 200 DCT-II coefficients.
+
+    Read-only CPU arrays are accepted; noncontiguous or unaligned input may be copied.
 
     :param speeds: NumPy array of 2016 float values (one per 5-minute bucket)
     :returns: NumPy array of 200 int16 coefficients

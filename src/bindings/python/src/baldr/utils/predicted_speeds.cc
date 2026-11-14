@@ -6,6 +6,10 @@
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/string.h>
 
+#include <array>
+#include <cstdint>
+#include <cstring>
+
 namespace nb = nanobind;
 namespace vb = valhalla::baldr;
 
@@ -19,8 +23,16 @@ void init_predicted_speeds(nb::module_& m) {
 
   m.def(
       "compress_speed_buckets",
-      [](const nb::ndarray<float, nb::shape<vb::kBucketsPerWeek>>& speeds) {
-        auto result = vb::compress_speed_buckets(speeds.data());
+      [](const nb::ndarray<const float, nb::shape<vb::kBucketsPerWeek>, nb::c_contig,
+                           nb::device::cpu>& speeds) {
+        const auto* buckets = speeds.data();
+        std::array<float, vb::kBucketsPerWeek> aligned_buckets;
+        if (reinterpret_cast<std::uintptr_t>(buckets) % alignof(float) != 0) {
+          // Contiguous NumPy byte buffers can still start at an unaligned address.
+          std::memcpy(aligned_buckets.data(), buckets, aligned_buckets.size() * sizeof(float));
+          buckets = aligned_buckets.data();
+        }
+        auto result = vb::compress_speed_buckets(buckets);
         int16_t* data = new int16_t[vb::kCoefficientCount];
         std::copy(result.begin(), result.end(), data);
         size_t shape[1] = {vb::kCoefficientCount};
@@ -30,6 +42,7 @@ void init_predicted_speeds(nb::module_& m) {
       },
       nb::arg("speeds"),
       "Compress 2016 speed buckets into 200 DCT-II coefficients.\n\n"
+      "Read-only CPU arrays are accepted; noncontiguous or unaligned input may be copied.\n\n"
       ":param speeds: NumPy array of 2016 float values (one per 5-minute bucket)\n"
       ":returns: NumPy array of 200 int16 coefficients");
 
