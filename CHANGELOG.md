@@ -61,6 +61,7 @@
    * FIXED: read predicted-speed coefficient bytes without unaligned typed loads.
    * FIXED: keep unique name lookups valid across rehashing, clearing, copying and moving.
    * FIXED: return no contours when no contour intervals are requested.
+   * FIXED: honor NumPy speed-profile strides and accept read-only inputs when compressing buckets.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)
