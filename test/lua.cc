@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <osmium/builder/osm_object_builder.hpp>
 
+#include <map>
 #include <string>
 
 using namespace valhalla;
@@ -28,6 +29,162 @@ struct TagsBuilder {
     return way_builder.object().tags();
   }
 };
+
+auto transform_way(mjolnir::LuaTagTransform& lua, const std::map<std::string, std::string>& values) {
+  TagsBuilder tags;
+  for (const auto& tag : values) {
+    tags.insert(tag);
+  }
+  return lua.Transform(mjolnir::OSMType::kWay, 1, tags.get());
+}
+
+TEST(Lua, PedestrianIgnoresVehicleOneway) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const std::string highway :
+       {"footway", "pedestrian", "path", "steps", "cycleway", "residential"}) {
+    for (const std::string oneway : {"yes", "true", "1", "-1", "no"}) {
+      SCOPED_TRACE(highway + " oneway=" + oneway);
+      auto results = transform_way(lua, {{"highway", highway},
+                                         {"oneway", oneway},
+                                         {"foot", "yes"},
+                                         {"bicycle", "yes"}});
+      EXPECT_EQ(results.at("pedestrian_forward"), "true");
+      EXPECT_EQ(results.at("pedestrian_backward"), "true");
+      EXPECT_EQ(results.at("bike_forward"), oneway == "-1" ? "false" : "true");
+      EXPECT_EQ(results.at("bike_backward"), oneway == "no" || oneway == "-1" ? "true" : "false");
+      if (highway == "residential") {
+        EXPECT_EQ(results.at("auto_forward"), oneway == "-1" ? "false" : "true");
+        EXPECT_EQ(results.at("auto_backward"), oneway == "no" || oneway == "-1" ? "true" : "false");
+      }
+    }
+  }
+}
+
+TEST(Lua, PedestrianOnewayUsesFootDirection) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const std::string highway :
+       {"footway", "pedestrian", "path", "steps", "cycleway", "residential"}) {
+    for (const std::string oneway : {"", "yes", "-1", "no"}) {
+      for (const std::string foot_oneway : {"yes", "true", "1", "-1", "no", "false"}) {
+        SCOPED_TRACE(highway + " oneway=" + oneway + " oneway:foot=" + foot_oneway);
+        std::map<std::string, std::string> tags = {{"highway", highway},
+                                                   {"foot", "yes"},
+                                                   {"oneway:foot", foot_oneway}};
+        if (!oneway.empty()) {
+          tags.emplace("oneway", oneway);
+        }
+        auto results = transform_way(lua, tags);
+        EXPECT_EQ(results.at("pedestrian_forward"), foot_oneway == "-1" ? "false" : "true");
+        EXPECT_EQ(results.at("pedestrian_backward"),
+                  foot_oneway == "no" || foot_oneway == "false" || foot_oneway == "-1" ? "true"
+                                                                                       : "false");
+      }
+    }
+  }
+}
+
+TEST(Lua, PedestrianDirectionalAccessOverridesOneway) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const std::string oneway : {"yes", "-1", "no"}) {
+    for (const std::string foot_oneway : {"yes", "-1", "no"}) {
+      for (const std::string forward : {"yes", "no"}) {
+        for (const std::string backward : {"yes", "no"}) {
+          SCOPED_TRACE("oneway=" + oneway + " oneway:foot=" + foot_oneway +
+                       " foot:forward=" + forward + " foot:backward=" + backward);
+          auto results = transform_way(lua, {{"highway", "path"},
+                                             {"oneway", oneway},
+                                             {"oneway:foot", foot_oneway},
+                                             {"foot:forward", forward},
+                                             {"foot:backward", backward},
+                                             {"bicycle", "yes"}});
+          EXPECT_EQ(results.at("pedestrian_forward"), forward == "yes" ? "true" : "false");
+          EXPECT_EQ(results.at("pedestrian_backward"), backward == "yes" ? "true" : "false");
+        }
+      }
+    }
+  }
+}
+
+TEST(Lua, PedestrianOnewayPreservesDeniedAccess) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const std::string oneway : {"yes", "-1", "no"}) {
+    for (const std::string foot_oneway : {"yes", "-1", "no"}) {
+      SCOPED_TRACE("oneway=" + oneway + " oneway:foot=" + foot_oneway);
+      auto results = transform_way(lua, {{"highway", "residential"},
+                                         {"oneway", oneway},
+                                         {"oneway:foot", foot_oneway},
+                                         {"foot", "no"}});
+      EXPECT_EQ(results.at("pedestrian_forward"), "false");
+      EXPECT_EQ(results.at("pedestrian_backward"), "false");
+    }
+  }
+}
+
+TEST(Lua, PedestrianDirectionalAccessWithoutFootOneway) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const std::string oneway : {"yes", "-1", "no"}) {
+    SCOPED_TRACE("oneway=" + oneway);
+    auto results =
+        transform_way(lua, {{"highway", "path"}, {"oneway", oneway}, {"foot:backward", "no"}});
+    EXPECT_EQ(results.at("pedestrian_forward"), "true");
+    EXPECT_EQ(results.at("pedestrian_backward"), "false");
+    results = transform_way(lua, {{"highway", "path"}, {"oneway", oneway}, {"foot:forward", "no"}});
+    EXPECT_EQ(results.at("pedestrian_forward"), "false");
+    EXPECT_EQ(results.at("pedestrian_backward"), "true");
+    results = transform_way(lua, {{"highway", "path"},
+                                  {"oneway", oneway},
+                                  {"foot", "no"},
+                                  {"foot:backward", "yes"}});
+    EXPECT_EQ(results.at("pedestrian_forward"), "false");
+    EXPECT_EQ(results.at("pedestrian_backward"), "true");
+  }
+}
+
+TEST(Lua, PedestrianRoundaboutDoesNotInheritOneway) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  auto results = transform_way(lua, {{"highway", "pedestrian"},
+                                     {"junction", "roundabout"},
+                                     {"bicycle", "yes"},
+                                     {"motor_vehicle", "yes"}});
+  EXPECT_EQ(results.at("pedestrian_forward"), "true");
+  EXPECT_EQ(results.at("pedestrian_backward"), "true");
+  EXPECT_EQ(results.at("bike_forward"), "true");
+  EXPECT_EQ(results.at("bike_backward"), "false");
+  EXPECT_EQ(results.at("auto_forward"), "true");
+  EXPECT_EQ(results.at("auto_backward"), "false");
+}
+
+TEST(Lua, PedestrianConveyorPreservesTaggedOneway) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const std::string highway : {"steps", "footway"}) {
+    for (const std::string conveying : {"yes", "forward", "backward", "reversible", "no"}) {
+      for (const std::string oneway : {"yes", "-1", "no"}) {
+        SCOPED_TRACE(highway + " conveying=" + conveying + " oneway=" + oneway);
+        std::map<std::string, std::string> tags = {{"highway", highway},
+                                                   {"conveying", conveying},
+                                                   {"oneway", oneway},
+                                                   {"bicycle", "no"}};
+        auto results = transform_way(lua, tags);
+        EXPECT_EQ(results.at("pedestrian_forward"),
+                  conveying != "no" && oneway == "-1" ? "false" : "true");
+        EXPECT_EQ(results.at("pedestrian_backward"),
+                  conveying == "no" || oneway == "no" || oneway == "-1" ? "true" : "false");
+        tags["oneway:foot"] = "no";
+        results = transform_way(lua, tags);
+        EXPECT_EQ(results.at("pedestrian_forward"), "true");
+        EXPECT_EQ(results.at("pedestrian_backward"), "true");
+        if (highway == "steps") {
+          EXPECT_EQ(results.at("use"), "34");
+        }
+        tags.erase("oneway");
+        tags.erase("oneway:foot");
+        results = transform_way(lua, tags);
+        EXPECT_EQ(results.at("pedestrian_forward"), "true");
+        EXPECT_EQ(results.at("pedestrian_backward"), "true");
+      }
+    }
+  }
+}
 
 TEST(Lua, ZeroMantissa) {
   mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
