@@ -2083,6 +2083,10 @@ function nodes_proc (kv, nokeys)
   if auto_tag == nil then
     auto_tag = motor_vehicle_tag
   end
+  if motor_vehicle_tag == 1 then
+    moped_tag = moped_tag or 512
+    motorcycle_tag = motorcycle_tag or 1024
+  end
   local bus_tag
   local taxi_tag
 

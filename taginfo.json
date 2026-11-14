@@ -3013,7 +3013,7 @@
         "node",
         "way"
       ],
-      "description": "Overrides access flags for auto."
+      "description": "Sets motor vehicle access, including motorcycles and mopeds, unless a mode-specific tag takes precedence."
     },
     {
       "description": "Adds conditional access to an edge with a time dependency in opening_hours format, see: https://wiki.openstreetmap.org/wiki/Key:opening_hours",
