@@ -2,6 +2,7 @@
 
 import json
 import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -216,6 +217,45 @@ class TestGetConfig(unittest.TestCase):
             get_config(tile_extract="", tile_dir="", verbose=True)["logging"]["type"], "std_out"
         )
         self.assertEqual(get_config(tile_extract="", tile_dir="", verbose=False)["logging"]["type"], "")
+
+    def test_get_config_with_only_one_tile_source(self):
+        """A missing optional source must not prevent using the other source."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_dir = Path.cwd()
+            os.chdir(temp_dir)
+            try:
+                extract = Path("tiles.tar")
+                extract.touch()
+                tiles = Path("tiles")
+                tiles.mkdir()
+                for kwargs, expected_key, expected_path in (
+                    ({"tile_extract": extract}, "tile_extract", extract),
+                    ({"tile_dir": tiles}, "tile_dir", tiles),
+                    ({"tile_extract": str(extract), "tile_dir": ""}, "tile_extract", extract),
+                    ({"tile_extract": "", "tile_dir": str(tiles)}, "tile_dir", tiles),
+                ):
+                    with self.subTest(kwargs=kwargs):
+                        config = get_config(**kwargs)
+                        self.assertEqual(config["mjolnir"][expected_key], str(expected_path.resolve()))
+                        config_path, temp_file = parse_and_validate_config(config)
+                        self.assertTrue(Path(config_path).is_file())
+                        Path(temp_file).unlink()
+            finally:
+                os.chdir(previous_dir)
+
+    def test_get_config_resolves_missing_default_paths(self):
+        """Generating a configuration does not require graph data to exist yet."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_dir = Path.cwd()
+            os.chdir(temp_dir)
+            try:
+                config = get_config()
+                self.assertEqual(config["mjolnir"]["tile_dir"], str(Path("valhalla_tiles").resolve()))
+                self.assertEqual(
+                    config["mjolnir"]["tile_extract"], str(Path("valhalla_tiles.tar").resolve())
+                )
+            finally:
+                os.chdir(previous_dir)
 
 
 if __name__ == "__main__":
