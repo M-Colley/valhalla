@@ -41,10 +41,12 @@ jobs:
             -DENABLE_PYTHON_BINDINGS=ON -DENABLE_CCACHE=ON -DLOGGING_LEVEL=ALL \
             -DENABLE_SINGLE_FILES_WERROR=OFF 2>&1 | tee validation-logs/configure.log
       - name: Build focused targets and regenerate Python stub
+        id: focused_build
         shell: bash
         run: |
           set -o pipefail
           cmake --build build --parallel 2 --target lua maneuversbuilder actor \
+            factory map_matcher_factory graphtile transitdeparture gurka_gtfs \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
@@ -56,19 +58,26 @@ jobs:
           set -o pipefail
           cd build
           status=0
-          for test in test/lua test/maneuversbuilder test/actor test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
+          for test in test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
+            test/graphtile test/transitdeparture test/gurka/gurka_gtfs \
+            test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
             "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log" || status=1
           done
           exit "$status"
-      - name: Run Python actor tests
+      - name: Run Python actor and config tests
+        if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
         shell: bash
         run: |
           set -o pipefail
           cd build
           export LOCPATH="$GITHUB_WORKSPACE/locales"
           export PYTHONPATH="$GITHUB_WORKSPACE/build/src/bindings/python"
-          python -m unittest discover -s "$GITHUB_WORKSPACE/test/bindings/python" -p test_actor.py -v \
-            2>&1 | tee ../validation-logs/python-actor.log
+          status=0
+          for suite in actor config; do
+            python -m unittest discover -s "$GITHUB_WORKSPACE/test/bindings/python" -p "test_${suite}.py" -v \
+              2>&1 | tee "../validation-logs/python-${suite}.log" || status=1
+          done
+          exit "$status"
       - name: Upload validation logs
         if: always()
         uses: actions/upload-artifact@v4
