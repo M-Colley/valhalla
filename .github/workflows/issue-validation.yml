@@ -63,14 +63,10 @@ jobs:
           for test in test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
             test/graphtile test/transitdeparture test/gurka/gurka_gtfs test/multimodalbuilder \
             test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames test/gridded_data \
-            test/restriction_parser test/gurka/gurka_simple_restrictions \
+            test/restriction_parser test/gurka/gurka_simple_restrictions test/thor_worker test/mapmatch \
             test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
             "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log" || status=1
           done
-          test/thor_worker --gtest_filter=ThorWorker.test_linear_references \
-            2>&1 | tee ../validation-logs/thor_worker-openlr.log || status=1
-          test/mapmatch --gtest_filter='Mapmatch.openlr_parameter_*' \
-            2>&1 | tee ../validation-logs/mapmatch-openlr.log || status=1
           exit "$status"
       - name: Run Python actor config and speed tests
         if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
