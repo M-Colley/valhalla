@@ -629,7 +629,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Used for escalator and moving walkway."
+      "description": "Identifies escalators and moving walkways. Active conveyors on steps and footways retain tagged oneway restrictions unless oneway:foot overrides them."
     },
     {
       "key": "crossing",
@@ -3924,7 +3924,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Sets reverse flag to true for all types of routing.  A value of -1 will flip the direction of the oneway."
+      "description": "Restricts vehicles to travel opposite the way direction. Pedestrians remain bidirectional except on active conveyors."
     },
     {
       "key": "oneway",
@@ -3932,7 +3932,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Sets reverse flag to true for all types of routing."
+      "description": "Restricts vehicles to travel in the way direction. Pedestrians remain bidirectional except on active conveyors."
     },
     {
       "key": "oneway",
@@ -3940,7 +3940,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Sets reverse flag to true for all types of routing."
+      "description": "Restricts vehicles to travel in the way direction. Pedestrians remain bidirectional except on active conveyors."
     },
     {
       "key": "oneway",
@@ -3948,7 +3948,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Sets reverse flag to true for all types of routing."
+      "description": "Restricts vehicles to travel in the way direction. Pedestrians remain bidirectional except on active conveyors."
     },
     {
       "key": "oneway",
@@ -4020,7 +4020,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Overrides oneway flag.  Sets foot reverse flag to true.  A value of -1 will flip the direction of the oneway for pedestrians."
+      "description": "Restricts pedestrian travel to the reverse way direction independently of vehicle oneway tagging."
     },
     {
       "key": "oneway:foot",
@@ -4028,7 +4028,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Overrides oneway flag.  Sets foot reverse flag to true."
+      "description": "Restricts pedestrian travel to the forward way direction independently of vehicle oneway tagging."
     },
     {
       "key": "oneway:foot",
@@ -4036,7 +4036,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Overrides oneway flag.  Sets foot reverse flag to true."
+      "description": "Restricts pedestrian travel to the forward way direction independently of vehicle oneway tagging."
     },
     {
       "key": "oneway:foot",
@@ -4044,7 +4044,7 @@
       "object_types": [
         "way"
       ],
-      "description": "Overrides oneway flag.  Sets foot reverse flag to true."
+      "description": "Restricts pedestrian travel to the forward way direction independently of vehicle oneway tagging."
     },
     {
       "key": "oneway:foot",
@@ -4052,7 +4052,15 @@
       "object_types": [
         "way"
       ],
-      "description": "If oneway = yes and oneway:foot = no then set the foot reverse flag to true."
+      "description": "Allows pedestrian travel in both directions, subject to access restrictions, independently of vehicle oneway tagging."
+    },
+    {
+      "key": "oneway:foot",
+      "value": "false",
+      "object_types": [
+        "way"
+      ],
+      "description": "Allows pedestrian travel in both directions, subject to access restrictions, independently of vehicle oneway tagging."
     },
     {
       "key": "oneway:bus",
