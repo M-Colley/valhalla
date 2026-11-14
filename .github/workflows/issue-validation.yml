@@ -47,7 +47,8 @@ jobs:
           set -o pipefail
           cmake --build build --parallel 2 --target lua maneuversbuilder actor \
             factory map_matcher_factory graphtile transitdeparture gurka_gtfs multimodalbuilder \
-            openlr gurka_locate predictedspeeds uniquenames \
+            openlr gurka_locate predictedspeeds uniquenames gridded_data \
+            restriction_parser gurka_simple_restrictions \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
@@ -61,12 +62,13 @@ jobs:
           status=0
           for test in test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
             test/graphtile test/transitdeparture test/gurka/gurka_gtfs test/multimodalbuilder \
-            test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames \
+            test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames test/gridded_data \
+            test/restriction_parser test/gurka/gurka_simple_restrictions \
             test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
             "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log" || status=1
           done
           exit "$status"
-      - name: Run Python actor and config tests
+      - name: Run Python actor config and speed tests
         if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
         shell: bash
         run: |
@@ -75,7 +77,7 @@ jobs:
           export LOCPATH="$GITHUB_WORKSPACE/locales"
           export PYTHONPATH="$GITHUB_WORKSPACE/build/src/bindings/python"
           status=0
-          for suite in actor config; do
+          for suite in actor config predicted_speeds; do
             python -m unittest discover -s "$GITHUB_WORKSPACE/test/bindings/python" -p "test_${suite}.py" -v \
               2>&1 | tee "../validation-logs/python-${suite}.log" || status=1
           done
