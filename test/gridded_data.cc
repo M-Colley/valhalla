@@ -79,6 +79,16 @@ TEST(GriddedData, Basic) {
   */
 }
 
+TEST(GriddedData, NoIntervalsProducesNoContours) {
+  using Grid = GriddedData<2>;
+  const auto max_value = std::numeric_limits<float>::max();
+  Grid grid({0, 0, 1, 1}, 0.1f, {max_value, max_value});
+  std::vector<Grid::contour_interval_t> intervals;
+  for (const auto rings_only : {false, true}) {
+    EXPECT_TRUE(grid.GenerateContours(intervals, rings_only).empty());
+  }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
