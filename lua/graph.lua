@@ -1514,27 +1514,10 @@ function filter_tags_generic(kv)
     kv["bus_backward"] = forwards
   end
 
-  -- bus only logic
-  if kv["lanes:bus"] == "1" then
-    kv["bus_forward"] = "true"
-    kv["bus_backward"] = "false"
-  elseif kv["lanes:bus"] == "2" then
-    kv["bus_forward"] = "true"
-    kv["bus_backward"] = "true"
-  end
-
   if kv["oneway:taxi"] == "-1" then
     local forwards = kv["taxi_forward"]
     kv["taxi_forward"] = kv["taxi_backward"]
     kv["taxi_backward"] = forwards
-  end
-
-  if kv["lanes:psv"] == "1" then
-    kv["taxi_forward"] = "true"
-    kv["taxi_backward"] = "false"
-  elseif kv["lanes:psv"] == "2" then
-    kv["taxi_forward"] = "true"
-    kv["taxi_backward"] = "true"
   end
 
   --if none of the modes were set we are done looking at this

@@ -6,6 +6,7 @@
 #include <osmium/builder/osm_object_builder.hpp>
 
 #include <array>
+#include <initializer_list>
 #include <string>
 #include <utility>
 
@@ -30,6 +31,57 @@ struct TagsBuilder {
     return way_builder.object().tags();
   }
 };
+
+mjolnir::Tags TransformAccessTags(std::initializer_list<std::pair<std::string, std::string>> values) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  TagsBuilder tags;
+  for (const auto& value : values)
+    tags.insert(value);
+  return lua.Transform(mjolnir::OSMType::kWay, 1, tags.get());
+}
+TEST(Lua, LaneCountsPreserveTwoWayAccess) {
+  for (const auto& mode : {std::pair{"lanes:bus", "bus"}, std::pair{"lanes:psv", "taxi"}})
+    for (const auto* count : {"1", "2"}) {
+      SCOPED_TRACE(std::string(mode.first) + "=" + count);
+      const auto result = TransformAccessTags({{"highway", "residential"}, {mode.first, count}});
+      EXPECT_EQ(result.at(std::string(mode.second) + "_forward"), "true");
+      EXPECT_EQ(result.at(std::string(mode.second) + "_backward"), "true");
+    }
+}
+TEST(Lua, LaneCountsRespectAccessRestrictions) {
+  for (const auto& mode : {std::pair{"lanes:bus", "bus"}, std::pair{"lanes:psv", "taxi"}})
+    for (const auto* count : {"1", "2"}) {
+      SCOPED_TRACE(std::string(mode.first) + "=" + count);
+      const auto denied =
+          TransformAccessTags({{"highway", "residential"}, {mode.first, count}, {mode.second, "no"}});
+      EXPECT_EQ(denied.at(std::string(mode.second) + "_forward"), "false");
+      EXPECT_EQ(denied.at(std::string(mode.second) + "_backward"), "false");
+      const auto directional = TransformAccessTags({{"highway", "residential"},
+                                                    {mode.first, count},
+                                                    {std::string(mode.second) + ":forward", "no"}});
+      EXPECT_EQ(directional.at(std::string(mode.second) + "_forward"), "false");
+      EXPECT_EQ(directional.at(std::string(mode.second) + "_backward"), "true");
+    }
+}
+TEST(Lua, LaneCountsRespectOneWayAndContraflow) {
+  for (const auto& mode : {std::pair{"lanes:bus", "bus"}, std::pair{"lanes:psv", "taxi"}})
+    for (const auto* count : {"1", "2"}) {
+      SCOPED_TRACE(std::string(mode.first) + "=" + count);
+      for (const auto* direction : {"yes", "-1"}) {
+        const auto result = TransformAccessTags(
+            {{"highway", "residential"}, {mode.first, count}, {"oneway", direction}});
+        const bool forward = std::string(direction) == "yes";
+        EXPECT_EQ(result.at(std::string(mode.second) + "_forward"), forward ? "true" : "false");
+        EXPECT_EQ(result.at(std::string(mode.second) + "_backward"), forward ? "false" : "true");
+      }
+      const auto contra = TransformAccessTags({{"highway", "residential"},
+                                               {mode.first, count},
+                                               {"oneway", "yes"},
+                                               {std::string("oneway:") + mode.second, "no"}});
+      EXPECT_EQ(contra.at(std::string(mode.second) + "_forward"), "true");
+      EXPECT_EQ(contra.at(std::string(mode.second) + "_backward"), "true");
+    }
+}
 
 TEST(Lua, ZeroMantissa) {
   mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));

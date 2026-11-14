@@ -2459,22 +2459,6 @@
       ]
     },
     {
-      "key": "lanes:bus",
-      "value": "1",
-      "object_types": [
-        "way"
-      ],
-      "description": "Bus forward override.  Sets bus forward to true."
-    },
-    {
-      "key": "lanes:bus",
-      "value": "2",
-      "object_types": [
-        "way"
-      ],
-      "description": "Bus forward and backward overrides.  Sets bus forward and backward to true."
-    },
-    {
       "key": "lanes:forward",
       "description": "Lane count in the forward direction",
       "object_types": [
