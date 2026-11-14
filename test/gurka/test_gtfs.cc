@@ -860,9 +860,9 @@ TEST(GtfsExample, MakeTile) {
         EXPECT_TRUE((edge.forwardaccess() & kPedestrianAccess) ||
                     (edge.reverseaccess() & kPedestrianAccess));
       } else if (edge.use() == Use::kRail || edge.use() == Use::kBus) {
-        const valhalla::baldr::TransitDeparture* dep =
+        const valhalla::baldr::transit_departure_ptr dep(
             tile->GetNextDeparture(edge.lineid(), 21600, // 06:00 am
-                                   dt_day, dt_dow, date_before_tile, false, false);
+                                   dt_day, dt_dow, date_before_tile, false, false));
         EXPECT_EQ(dep->elapsed_time(), 180);
         const auto shape = tile->edgeinfo(&edge).encoded_shape();
         EXPECT_FALSE(shape.empty());
@@ -973,8 +973,8 @@ TEST(GtfsExample, FrequencyDepartureBeforeEndTime) {
       if (!edge.IsTransitLine()) {
         continue;
       }
-      const auto* dep = tile->GetNextDeparture(edge.lineid(), current_time, dt_day, dt_dow,
-                                               date_before_tile, false, false);
+      const transit_departure_ptr dep(tile->GetNextDeparture(edge.lineid(), current_time, dt_day,
+                                                             dt_dow, date_before_tile, false, false));
       if (!dep || dep->type() != kFrequencySchedule) {
         continue;
       }

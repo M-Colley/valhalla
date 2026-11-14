@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <sstream>
@@ -30,6 +31,55 @@ struct testable_graphtile : public valhalla::baldr::GraphTile {
     delete header_;
   }
 };
+
+// A tile with borrowed fixed data and an adjusted frequency departure.
+struct transit_graphtile : public GraphTile {
+  transit_graphtile() {
+    header.set_departurecount(2);
+    header.set_schedulecount(1);
+    header_ = &header;
+    departures_ = departures.data();
+    transit_schedules_ = &schedule;
+  }
+
+  GraphTileHeader header;
+  TransitSchedule schedule{1, 127, 0};
+  std::array<TransitDeparture, 2>
+      departures{TransitDeparture(1, 11, 0, 0, 0, 9000, 90, 0, true, true),
+                 TransitDeparture(2, 22, 0, 0, 0, 9000, 18000, 600, 90, 0, true, true)};
+};
+
+TEST(Graphtile, DepartureLookupLifetimes) {
+  transit_graphtile tile;
+  {
+    transit_departure_ptr departure(tile.GetNextDeparture(1, 9000, 0, 1, false, false, false));
+    ASSERT_EQ(departure.get(), &tile.departures[0]);
+    departure.reset(tile.GetTransitDeparture(1, 11, 9000));
+    EXPECT_EQ(departure.get(), &tile.departures[0]);
+  }
+  // Fixed departures still belong to the tile after a lookup result is destroyed.
+  EXPECT_EQ(tile.departures[0].departure_time(), 9000);
+
+  // Retrying a transfer replaces an owned adjusted departure. These independent
+  // lookups also exercise both methods' allocation paths under leak sanitizers.
+  for (unsigned i = 0; i < 100; ++i) {
+    transit_departure_ptr departure(tile.GetNextDeparture(2, 9200, 0, 1, false, false, false));
+    ASSERT_TRUE(departure);
+    EXPECT_EQ(departure->departure_time(), 9600);
+    departure.reset(tile.GetNextDeparture(2, 9700, 0, 1, false, false, false));
+    ASSERT_TRUE(departure);
+    EXPECT_EQ(departure->departure_time(), 10200);
+
+    const transit_departure_ptr trip(tile.GetTransitDeparture(2, 22, 9200));
+    ASSERT_TRUE(trip);
+    EXPECT_EQ(trip->departure_time(), 9600);
+    EXPECT_EQ(departure->departure_time(), 10200);
+
+    departure.reset(tile.GetNextDeparture(2, 18000, 0, 1, false, false, false));
+    EXPECT_FALSE(departure);
+    EXPECT_FALSE(transit_departure_ptr(tile.GetTransitDeparture(2, 22, 18000)));
+  }
+}
 
 TEST(Graphtile, FileSuffix) {
   EXPECT_EQ(GraphTile::FileSuffix(GraphId(2, 2, 0)), "2/000/000/002.gph");

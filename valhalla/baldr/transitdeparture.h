@@ -2,6 +2,7 @@
 #define VALHALLA_BALDR_TRANSITDEPARTURE_H_
 
 #include <cstdint>
+#include <memory>
 
 namespace valhalla {
 namespace baldr {
@@ -219,6 +220,19 @@ protected:
   };
   DepartureTimes departure_times_;
 };
+
+// The departure lookup methods borrow fixed schedules from their tile and allocate
+// frequency schedules with an adjusted departure time. Use this owner only for
+// GetNextDeparture/GetTransitDeparture results, never for entries in the tile.
+// The tile must outlive any borrowed fixed result.
+struct TransitDepartureDeleter {
+  void operator()(const TransitDeparture* departure) const {
+    if (departure && departure->type() == kFrequencySchedule) {
+      delete departure;
+    }
+  }
+};
+using transit_departure_ptr = std::unique_ptr<const TransitDeparture, TransitDepartureDeleter>;
 
 } // namespace baldr
 } // namespace valhalla
