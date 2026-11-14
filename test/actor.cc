@@ -70,6 +70,20 @@ TEST(Actor, Route) {
   EXPECT_THROW(actor.route(request, &interrupt), test_exception_t);
 }
 
+TEST(Actor, SourcesToTargets) {
+  tyr::actor_t actor(conf);
+  const std::string request = R"({"sources":[{"lat":40.546115,"lon":-76.385076}],
+      "targets":[{"lat":40.544232,"lon":-76.385752}],"costing":"auto"})";
+  const auto expected = actor.matrix(request);
+  actor.cleanup();
+  EXPECT_EQ(actor.sources_to_targets(request), expected);
+  actor.cleanup();
+
+  Api api;
+  EXPECT_EQ(actor.sources_to_targets(request, nullptr, &api), expected);
+  EXPECT_EQ(api.options().action(), Options::sources_to_targets);
+}
+
 TEST(Actor, TraceAttributes) {
   tyr::actor_t actor(conf);
   std::string request = R"({"shape":[{"lat":40.546115,"lon":-76.385076},
