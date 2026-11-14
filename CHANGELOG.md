@@ -19,6 +19,7 @@
    * FIXED: keep unique name lookups valid across rehashing, clearing, copying and moving.
    * FIXED: honor NumPy speed-profile strides and accept read-only inputs when compressing buckets.
    * FIXED: return no contours when no contour intervals are requested.
+   * FIXED: preserve lane connectivity way IDs above 32 bits during tile building.
    * FIXED: retain every incoming way in no_entry restriction relations, including vehicle exceptions and conditional restrictions.
    * FIXED: warn when server policy prevents a supplied trace option from customizing map matching.
    * FIXED: include requested trace admin fields independently of node admin indices.
