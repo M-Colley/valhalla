@@ -48,7 +48,7 @@ jobs:
           cmake --build build --parallel 2 --target lua maneuversbuilder actor \
             factory map_matcher_factory graphtile transitdeparture gurka_gtfs multimodalbuilder \
             openlr gurka_locate predictedspeeds uniquenames gridded_data \
-            restriction_parser gurka_simple_restrictions thor_worker mapmatch \
+            restriction_parser gurka_simple_restrictions thor_worker mapmatch gurka_trace_attributes gurka_lane_connectivity \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
@@ -65,6 +65,7 @@ jobs:
             test/graphtile test/transitdeparture test/gurka/gurka_gtfs test/multimodalbuilder \
             test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames test/gridded_data \
             test/restriction_parser test/gurka/gurka_simple_restrictions test/thor_worker test/mapmatch \
+            test/gurka/gurka_trace_attributes test/gurka/gurka_lane_connectivity \
             test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
             "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log"
             code=${PIPESTATUS[0]}
@@ -86,6 +87,18 @@ jobs:
               2>&1 | tee "../validation-logs/python-${suite}.log" || status=1
           done
           exit "$status"
+      - name: Run Rust historical speed binding test
+        if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
+        shell: bash
+        env:
+          CARGO_BUILD_JOBS: 2
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+        run: |
+          set -o pipefail
+          rustup toolchain install stable --profile minimal --no-self-update 2>&1 | tee validation-logs/rust-setup.log
+          rustup default stable 2>&1 | tee -a validation-logs/rust-setup.log
+          cargo test --release --test tiles_test historical_traffic -- --exact \
+            2>&1 | tee validation-logs/rust-predicted-speeds.log
       - name: Upload validation logs
         if: always()
         uses: actions/upload-artifact@v4
