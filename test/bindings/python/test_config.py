@@ -259,6 +259,7 @@ class TestGetConfig(unittest.TestCase):
             get_config(tile_extract="", tile_dir="")
 
         self.assertEqual(defaults, {"mjolnir": {}, "logging": {}, "optional": optional})
+
     def test_get_config_with_only_one_tile_source(self):
         """A missing optional source must not prevent using the other source."""
         with tempfile.TemporaryDirectory() as temp_dir:
