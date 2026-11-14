@@ -1,0 +1,79 @@
+name: issue integration validation
+
+on:
+  push:
+    branches:
+      - codex/validate-issues-20261114
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p validation-logs
+          ./scripts/install-linux-deps.sh --no-prime-server 2>&1 | tee validation-logs/dependencies.log
+          python -m pip install requests shapely numpy 2>&1 | tee validation-logs/python-dependencies.log
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: issue-validation-ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            issue-validation-ccache-${{ runner.os }}-
+      - name: Configure
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
+            -DENABLE_DATA_TOOLS=ON -DENABLE_SERVICES=OFF -DENABLE_TESTS=ON \
+            -DENABLE_PYTHON_BINDINGS=ON -DENABLE_CCACHE=ON -DLOGGING_LEVEL=ALL \
+            -DENABLE_SINGLE_FILES_WERROR=OFF 2>&1 | tee validation-logs/configure.log
+      - name: Build focused targets and regenerate Python stub
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 2 --target lua maneuversbuilder actor \
+            gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub \
+            2>&1 | tee validation-logs/build.log
+          cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
+          git diff --exit-code -- src/bindings/python/valhalla/_valhalla.pyi \
+            2>&1 | tee validation-logs/stub-diff.log
+      - name: Run focused C++ tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cd build
+          status=0
+          for test in test/lua test/maneuversbuilder test/actor test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
+            "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log" || status=1
+          done
+          exit "$status"
+      - name: Run Python actor tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cd build
+          export LOCPATH="$GITHUB_WORKSPACE/locales"
+          export PYTHONPATH="$GITHUB_WORKSPACE/build/src/bindings/python"
+          python -m unittest discover -s "$GITHUB_WORKSPACE/test/bindings/python" -p test_actor.py -v \
+            2>&1 | tee ../validation-logs/python-actor.log
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-validation-logs
+          path: validation-logs/
+          if-no-files-found: warn
+          retention-days: 14
