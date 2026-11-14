@@ -581,7 +581,8 @@ TEST(Standalone, BackwardTraceOnOnewayEdge) {
 
   const double gridsize = 10;
   const auto layout = gurka::detail::map_to_coordinates(ascii_map, gridsize);
-  auto map = gurka::buildtiles(layout, ways, {}, {}, "test/data/backward_trace_oneway");
+  auto map = gurka::buildtiles(layout, ways, {}, {}, "test/data/backward_trace_oneway",
+                               {{"meili.auto.turn_penalty_factor", "0"}});
 
   struct TestCase {
     std::vector<std::string> trace;

@@ -10,6 +10,8 @@
 
 #include <boost/property_tree/ptree_fwd.hpp>
 
+#include <unordered_map>
+
 namespace valhalla {
 namespace meili {
 
@@ -46,6 +48,8 @@ private:
   typedef sif::cost_ptr_t (*factory_function_t)(const boost::property_tree::ptree&);
 
   Config config_;
+
+  std::unordered_map<Costing::Type, Config> costing_configs_;
 
   std::shared_ptr<baldr::GraphReader> graphreader_;
 
