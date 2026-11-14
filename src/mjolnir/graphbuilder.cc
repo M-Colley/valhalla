@@ -1041,7 +1041,7 @@ void BuildTileSet(const std::string& ways_file,
                                  speed, truck_speed, use,
                                  static_cast<RoadClass>(edge.attributes.importance), n, has_signal,
                                  has_stop, has_yield,
-                                 ((has_stop || has_yield) ? node.minor() : false), restrictions,
+                                 ((has_stop || has_yield) ? (node.minor)() : false), restrictions,
                                  bike_network, edge.attributes.reclass_ferry,
                                  static_cast<RoadClass>(edge.attributes.importance_hierarchy));
 
@@ -1292,7 +1292,7 @@ void BuildTileSet(const std::string& ways_file,
           // temporarily set the transition index so that we know if we have a stop or yield sign
           // will be processed and removed in the enhancer
           uint8_t stop_yield_info = 0;
-          if (node.minor())
+          if ((node.minor)())
             stop_yield_info |= kMinor;
 
           if (node.stop_sign())

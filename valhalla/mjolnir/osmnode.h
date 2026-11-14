@@ -370,7 +370,7 @@ struct OSMNode {
   /**
    * Get the minor flag.
    */
-  bool minor() const {
+  bool(minor)() const {
     return minor_;
   }
 
