@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: keep available transit platform metadata and clear following transit state when a trip departure cannot be found
    * FIXED: release adjusted frequency departures after transit lookup, including transfer retries [#6412](https://github.com/valhalla/valhalla/issues/6412)
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
