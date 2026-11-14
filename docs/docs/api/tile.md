@@ -84,6 +84,8 @@ edge.stop_sign_<direction>
 edge.yield_sign_<direction>
 edge.access_<direction>
 edge.live_speed_<direction>
+edge.freeflow_speed_<direction>
+edge.constrained_speed_<direction>
 
 // node attributes
 node.drive_on_right

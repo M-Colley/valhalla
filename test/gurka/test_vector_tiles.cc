@@ -587,4 +587,15 @@ TEST_F(VectorTiles, FilterIncludeExclude) {
   EXPECT_EQ(cold_size, warm_size);
   // TODO: for some reason the tiles with no cache a magnitude smaller than the ones with cache
   // EXPECT_EQ(cold_size, no_cache_size);
+
+  cache_count = 0;
+  for (const auto* attribute : {"edge.freeflow_speed_forward", "edge.constrained_speed_forward",
+                                "edge.freeflow_speed_backward", "edge.constrained_speed_backward"}) {
+    SCOPED_TRACE(attribute);
+    for (const auto action : {valhalla::include, valhalla::exclude}) {
+      test_tile_filter(8, attribute, action, map_no_cache, cache_count);
+      test_tile_filter(14, attribute, action, map, cache_count);
+    }
+  }
+  EXPECT_EQ(cache_count, 8);
 }
