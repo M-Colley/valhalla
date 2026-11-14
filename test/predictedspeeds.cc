@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <iostream>
+#include <limits>
 
 using namespace std;
 using namespace valhalla::baldr;
@@ -73,7 +75,9 @@ TEST(PredictedSpeeds, test_decoding) {
   int idx = 1;
   int16_t coefficients[kCoefficientCount];
   for (uint32_t i = 0; i < kCoefficientCount; ++i, idx += 2) {
-    coefficients[i] = to_little_endian(*(reinterpret_cast<const int16_t*>(&raw[idx])));
+    uint16_t bytes;
+    std::memcpy(&bytes, raw + idx, sizeof(bytes));
+    coefficients[i] = to_little_endian(bytes);
   }
 
   // Bucketized speeds - decoded speeds are compared against this set)
@@ -208,7 +212,9 @@ TEST(PredictedSpeeds, test_negative_speeds) {
   int idx = 1;
   int16_t coefficients[kCoefficientCount];
   for (uint32_t i = 0; i < kCoefficientCount; ++i, idx += 2) {
-    coefficients[i] = to_little_endian(*(reinterpret_cast<const int16_t*>(&raw[idx])));
+    uint16_t bytes;
+    std::memcpy(&bytes, raw + idx, sizeof(bytes));
+    coefficients[i] = to_little_endian(bytes);
   }
 
   // Set data pointers within the PredictedSpeeds class (mimic how this might look for a single
@@ -281,6 +287,21 @@ TEST_F(EncoderDecoderTest, test_speeds_decoder) {
   // check decoded values
   ASSERT_TRUE(std::equal(coefficients.begin(), coefficients.end(), my_coefficients.begin()))
       << "Incorrect decoded coefficients";
+}
+
+TEST(PredictedSpeeds, SignedCoefficientWireValues) {
+  const std::array<int16_t, 5> expected = {std::numeric_limits<int16_t>::min(),
+                                           std::numeric_limits<int16_t>::max(), -1, 0, 1};
+  std::string bytes;
+  for (uint32_t i = 0; i < kCoefficientCount / expected.size(); ++i) {
+    bytes.append("\x80\x00\x7f\xff\xff\xff\x00\x00\x00\x01", 10);
+  }
+  const auto encoded = encode64(bytes);
+  const auto coefficients = decode_compressed_speeds(encoded);
+  for (size_t i = 0; i < coefficients.size(); ++i) {
+    EXPECT_EQ(coefficients[i], expected[i % expected.size()]);
+  }
+  EXPECT_EQ(encode_compressed_speeds(coefficients.data()), encoded);
 }
 
 } // namespace

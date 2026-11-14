@@ -1,6 +1,8 @@
 #include "baldr/predictedspeeds.h"
 #include "midgard/util.h"
 
+#include <cstring>
+
 namespace valhalla {
 namespace baldr {
 
@@ -104,12 +106,14 @@ std::array<int16_t, kCoefficientCount> decode_compressed_speeds(const std::strin
         "Decoded speed string size expected= " + std::to_string(kDecodedSpeedSize) +
         " actual=" + std::to_string(decoded_str.size()));
   }
-  const int8_t* raw = reinterpret_cast<const int8_t*>(decoded_str.data());
   // Create the coefficients. Each group of 2 bytes represents a signed, int16 number
   // (big endian). Convert to little endian.
   std::array<int16_t, kCoefficientCount> coefficients;
   for (uint32_t i = 0, idx = 0; i < kCoefficientCount; ++i, idx += 2) {
-    coefficients[i] = midgard::to_little_endian(*(reinterpret_cast<const uint16_t*>(&raw[idx])));
+    uint16_t bytes;
+    // String byte storage need not contain aligned uint16_t objects.
+    std::memcpy(&bytes, decoded_str.data() + idx, sizeof(bytes));
+    coefficients[i] = midgard::to_little_endian(bytes);
   }
   return coefficients;
 }
