@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace valhalla {
@@ -24,6 +25,24 @@ public:
     index("");
   }
 
+  UniqueNames(const UniqueNames& other) : names_(other.names_) {
+    indexes_.resize(other.indexes_.size());
+    for (const auto& entry : names_) {
+      indexes_[entry.second] = &entry.first;
+    }
+  }
+
+  UniqueNames(UniqueNames&& other) noexcept
+      : names_(std::move(other.names_)), indexes_(std::move(other.indexes_)) {
+    other.Clear();
+  }
+
+  UniqueNames& operator=(UniqueNames other) noexcept {
+    names_.swap(other.names_);
+    indexes_.swap(other.indexes_);
+    return *this;
+  }
+
   /**
    * Get an index for the specified name. If the name is not already used
    * it is added to the name map.
@@ -31,18 +50,23 @@ public:
    * @return  Returns an index into the unique list of names.
    */
   uint32_t index(const std::string& name) {
-    // Find the name in the map. If it is there return the index.
-    auto it = names_.find(name);
-    if (it != names_.end()) {
-      return it->second;
-    } else {
-      // Not in the map, add index and update
-      it = names_.insert(it, NamesMap::value_type(name, 0));
-      indexes_.push_back(it);
-      uint32_t index = indexes_.size() - 1;
-      it->second = index;
-      return index;
+    // Clear and moves leave an empty pool. Reserve zero before adding a real name.
+    if (indexes_.empty() && !name.empty()) {
+      index("");
     }
+    const auto next_index = static_cast<uint32_t>(indexes_.size());
+    auto [it, inserted] = names_.try_emplace(name, next_index);
+    if (!inserted) {
+      return it->second;
+    }
+    try {
+      // References to hash-map entries survive rehashing; iterators do not.
+      indexes_.push_back(&it->first);
+    } catch (...) {
+      names_.erase(it);
+      throw;
+    }
+    return next_index;
   }
 
   /**
@@ -51,7 +75,11 @@ public:
    * @return  Returns the name
    */
   const std::string& name(const uint32_t index) const {
-    return (index < (uint32_t)indexes_.size()) ? indexes_[index]->first : indexes_[0]->first;
+    if (index < indexes_.size()) {
+      return *indexes_[index];
+    }
+    static const std::string empty;
+    return empty;
   }
 
   /**
@@ -68,16 +96,15 @@ public:
    * @return  Returns the number of unique names.
    */
   size_t Size() const {
-    return names_.size() - 1;
+    return names_.empty() ? 0 : names_.size() - 1;
   }
 
 protected:
   // Map of names to indexes
   NamesMap names_;
 
-  // List of entries into the map
-  using nameiter = NamesMap::iterator;
-  std::vector<nameiter> indexes_;
+  // Pointers into this pool's map, rebuilt on copies and stable across rehashes.
+  std::vector<const std::string*> indexes_;
 };
 
 } // namespace mjolnir
