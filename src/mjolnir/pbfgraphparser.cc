@@ -24,6 +24,7 @@
 #include <osmium/io/xml_input.hpp>
 #endif
 
+#include <atomic>
 #include <thread>
 #include <utility>
 
@@ -43,6 +44,16 @@ constexpr size_t kOsmBuffersPerLua = 4;
 // buffer allows Lua workers not to stuck if next needed buffer takes more time than others.
 constexpr size_t kWaysChunksPerLua = 8;
 constexpr char kExceptDestinationRestrictionFlag = '~';
+
+std::string negative_osm_id_message(std::string_view type, osmium::object_id_type id) {
+  return "Negative OSM " + std::string(type) + " ID " + std::to_string(id) +
+         "; renumber OSM IDs and references to non-negative values before building tiles";
+}
+
+void check_osm_id(std::string_view type, osmium::object_id_type id) {
+  if (id < 0)
+    throw std::runtime_error(negative_osm_id_message(type, id));
+}
 
 // Convenience method to get a number from a string. Uses try/catch in case
 // to_int throws an exception
@@ -2010,6 +2021,7 @@ struct graph_parser {
 
   // Handle bike share stations separately
   void bss_node(const osmium::Node& node) {
+    check_osm_id("node", node.id());
     const uint64_t osmid = node.id();
     // unsorted extracts are just plain nasty, so they can bugger off!
     if (osmid < last_node_) {
@@ -2061,6 +2073,7 @@ struct graph_parser {
   }
 
   void node(const osmium::Node& node) {
+    check_osm_id("node", node.id());
     changeset(node.changeset());
 
     const uint64_t osmid = node.id();
@@ -3835,6 +3848,9 @@ struct graph_parser {
   }
 
   void relation(const osmium::Relation& relation) {
+    check_osm_id("relation", relation.id());
+    for (const auto& member : relation.members())
+      check_osm_id("relation member", member.ref());
     changeset(relation.changeset());
 
     const uint64_t osmid = relation.id();
@@ -5195,34 +5211,45 @@ OSMData PBFGraphParser::ParseWays(const boost::property_tree::ptree& pt,
     // These two queues maintains the order of processed ways by holding futures that correspond
     // to the promises sent to the Lua workers. Lua workers take that promises and corresponding
     // osmium buffers, process them and set the value of the promise.
-    using Ways = std::vector<graph_parser::Way>;
+    struct Ways {
+      std::vector<graph_parser::Way> ways;
+      std::string error;
+    };
     osmium::thread::Queue<std::future<Ways>> ways_queue(lua_concurrency * kWaysChunksPerLua);
     osmium::thread::Queue<std::pair<osmium::memory::Buffer, std::promise<Ways>>> buffer_queue(
         lua_concurrency * kOsmBuffersPerLua);
+    std::atomic<bool> negative_id_seen{false};
 
     // Single reader thread that guarantees the order of ways via future/promise magic.
-    std::thread reader_thread([&file, &ways_queue, &buffer_queue, lua_concurrency] {
-      osmium::io::Reader reader(file, osmium::osm_entity_bits::way);
-      while (osmium::memory::Buffer buffer = reader.read()) {
-        std::promise<Ways> promise;
-        ways_queue.push(promise.get_future()); // Blocks if queue is full.
-        buffer_queue.push(std::make_pair(std::move(buffer), std::move(promise)));
-      }
+    std::thread reader_thread(
+        [&file, &ways_queue, &buffer_queue, &negative_id_seen, lua_concurrency] {
+          osmium::io::Reader reader(file, osmium::osm_entity_bits::way);
+          while (!negative_id_seen.load(std::memory_order_relaxed)) {
+            osmium::memory::Buffer buffer = reader.read();
+            if (!buffer || negative_id_seen.load(std::memory_order_relaxed))
+              break;
+            std::promise<Ways> promise;
+            ways_queue.push(promise.get_future()); // Blocks if queue is full.
+            buffer_queue.push(std::make_pair(std::move(buffer), std::move(promise)));
+          }
 
-      // Send stop signals to all threads.
-      ways_queue.push({});
-      for (size_t i = 0; i < lua_concurrency; ++i) {
-        buffer_queue.push({});
-      }
+          // Send stop signals to all threads.
+          ways_queue.push({});
+          for (size_t i = 0; i < lua_concurrency; ++i) {
+            buffer_queue.push({});
+          }
 
-      reader.close(); // Explicit close to get an exception in case of an error.
-    });
+          // Early shutdown can make a decompression subprocess fail because its output is no longer
+          // consumed. In that case the Reader destructor handles the close without masking our error.
+          if (!negative_id_seen.load(std::memory_order_relaxed))
+            reader.close(); // Explicit close to get an exception in case of an error.
+        });
 
     // Thread pool for Lua processing.
     std::vector<std::thread> lua_pool;
     lua_pool.reserve(lua_concurrency);
     for (size_t i = 0; i < lua_concurrency; ++i) {
-      lua_pool.emplace_back(std::thread([&lua_script, &buffer_queue] {
+      lua_pool.emplace_back(std::thread([&lua_script, &buffer_queue, &negative_id_seen] {
         LuaTagTransform lua(lua_script);
         const Tags empty_way_tags = lua.Transform(OSMType::kWay, 0, {});
 
@@ -5235,14 +5262,30 @@ OSMData PBFGraphParser::ParseWays(const boost::property_tree::ptree& pt,
 
           Ways transformed;
           for (const osmium::memory::Item& item : buffer_promise.first) {
-            graph_parser::transform_way(static_cast<const osmium::Way&>(item), lua, empty_way_tags,
-                                        transformed);
+            const auto& way = static_cast<const osmium::Way&>(item);
+            if (way.id() < 0) {
+              transformed.error = negative_osm_id_message("way", way.id());
+              negative_id_seen.store(true, std::memory_order_relaxed);
+              break;
+            }
+            for (const auto& node : way.nodes()) {
+              if (node.ref() < 0) {
+                transformed.error = negative_osm_id_message("way node reference", node.ref());
+                break;
+              }
+            }
+            if (!transformed.error.empty()) {
+              negative_id_seen.store(true, std::memory_order_relaxed);
+              break;
+            }
+            graph_parser::transform_way(way, lua, empty_way_tags, transformed.ways);
           }
           buffer_promise.second.set_value(std::move(transformed));
         }
       }));
     }
 
+    std::string negative_id_error;
     while (true) {
       std::future<Ways> future;
       ways_queue.wait_and_pop(future);
@@ -5251,8 +5294,11 @@ OSMData PBFGraphParser::ParseWays(const boost::property_tree::ptree& pt,
       }
 
       Ways transformed = future.get();
-      for (const auto& way : transformed) {
-        parser.way(way);
+      if (negative_id_error.empty())
+        negative_id_error = std::move(transformed.error);
+      if (negative_id_error.empty()) {
+        for (const auto& way : transformed.ways)
+          parser.way(way);
       }
     }
 
@@ -5260,6 +5306,8 @@ OSMData PBFGraphParser::ParseWays(const boost::property_tree::ptree& pt,
     for (auto& t : lua_pool) {
       t.join();
     }
+    if (!negative_id_error.empty())
+      throw std::runtime_error(negative_id_error);
   }
 
   // Clarifies types of loop roads and saves fixed ways.
@@ -5391,6 +5439,9 @@ void PBFGraphParser::ParseAreaWays(const boost::property_tree::ptree& pt,
     while (osmium::memory::Buffer buffer = reader.read()) {
       for (const auto& item : buffer) {
         const auto& osm_way = static_cast<const osmium::Way&>(item);
+        check_osm_id("way", osm_way.id());
+        for (const auto& node : osm_way.nodes())
+          check_osm_id("way node reference", node.ref());
 
         // skip ways we don't care about
         if (!needed_way_ids.count(static_cast<uint64_t>(osm_way.id())))
