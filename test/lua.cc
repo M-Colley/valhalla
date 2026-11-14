@@ -1,3 +1,4 @@
+#include "baldr/graphconstants.h"
 #include "mjolnir/graph_lua_proc.h"
 #include "mjolnir/luatagtransform.h"
 #include "mjolnir/osmdata.h"
@@ -6,6 +7,7 @@
 #include <osmium/builder/osm_object_builder.hpp>
 
 #include <string>
+#include <utility>
 
 using namespace valhalla;
 
@@ -150,6 +152,50 @@ TEST(Lua, TestForwardBackward) {
   ASSERT_TRUE(results.count("maxwidth_backward") == 1);
   ASSERT_TRUE(results.count("maxweight_forward") == 1);
   ASSERT_TRUE(results.count("maxweight_backward") == 1);
+}
+
+TEST(Lua, NodeMotorVehicleAccessOverridesGeneralRestrictions) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  constexpr auto motorized = baldr::kAutoAccess | baldr::kMopedAccess | baldr::kMotorcycleAccess;
+  for (const std::string restriction : {"access", "vehicle"}) {
+    for (const std::string general_access : {"yes", "no"}) {
+      for (const std::string vehicle_access : {"yes", "no"}) {
+        SCOPED_TRACE(restriction + "=" + general_access + " motor_vehicle=" + vehicle_access);
+        TagsBuilder tags;
+        tags.insert({"barrier", "toll_booth"});
+        tags.insert({restriction, general_access});
+        tags.insert({"motor_vehicle", vehicle_access});
+        const auto result = lua.Transform(mjolnir::OSMType::kNode, 1, tags.get());
+        const auto mask = std::stoul(result.at("access_mask"));
+        EXPECT_EQ(mask & motorized, vehicle_access == "yes" ? motorized : 0);
+        EXPECT_EQ(mask & baldr::kBicycleAccess, general_access == "yes" ? baldr::kBicycleAccess : 0);
+      }
+    }
+  }
+}
+
+TEST(Lua, ExplicitNodeModeAccessOverridesMotorVehicleAccess) {
+  mjolnir::LuaTagTransform lua(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len));
+  for (const auto& mode :
+       {std::pair{"motorcycle", baldr::kMotorcycleAccess}, std::pair{"moped", baldr::kMopedAccess},
+        std::pair{"mofa", baldr::kMopedAccess}}) {
+    for (const std::string vehicle_access : {"yes", "no"}) {
+      for (const std::string mode_access : {"yes", "no"}) {
+        SCOPED_TRACE(std::string(mode.first) + "=" + mode_access +
+                     " motor_vehicle=" + vehicle_access);
+        TagsBuilder tags;
+        tags.insert({"barrier", "toll_booth"});
+        tags.insert({"access", "no"});
+        tags.insert({"motor_vehicle", vehicle_access});
+        tags.insert({mode.first, mode_access});
+        tags.insert({"bicycle", "yes"});
+        const auto result = lua.Transform(mjolnir::OSMType::kNode, 1, tags.get());
+        const auto mask = std::stoul(result.at("access_mask"));
+        EXPECT_EQ((mask & mode.second) != 0, mode_access == "yes");
+        EXPECT_NE(mask & baldr::kBicycleAccess, 0);
+      }
+    }
+  }
 }
 } // namespace
 
