@@ -46,7 +46,8 @@ jobs:
         run: |
           set -o pipefail
           cmake --build build --parallel 2 --target lua maneuversbuilder actor \
-            factory map_matcher_factory graphtile transitdeparture gurka_gtfs \
+            factory map_matcher_factory graphtile transitdeparture gurka_gtfs multimodalbuilder \
+            openlr gurka_locate predictedspeeds uniquenames \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
@@ -59,7 +60,8 @@ jobs:
           cd build
           status=0
           for test in test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
-            test/graphtile test/transitdeparture test/gurka/gurka_gtfs \
+            test/graphtile test/transitdeparture test/gurka/gurka_gtfs test/multimodalbuilder \
+            test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames \
             test/gurka/gurka_oneways_foot_bike test/gurka/gurka_oneways test/gurka/gurka_indoor; do
             "$test" 2>&1 | tee "../validation-logs/$(basename "$test").log" || status=1
           done
