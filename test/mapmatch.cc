@@ -67,6 +67,7 @@ const auto conf = test::make_config("test/data/utrecht_tiles",
                                     {
                                         {"meili.default.max_search_radius", "200"},
                                         {"meili.default.search_radius", "15.0"},
+                                        {"meili.auto.search_radius", "15.0"},
                                         {"meili.default.turn_penalty_factor", "200"},
                                     });
 
@@ -544,11 +545,13 @@ TEST(Mapmatch, test_matching_indices_and_waypoint_indices) {
         // handle the tracepoint null case
         continue;
       }
+      ASSERT_LT(j, answers[i].size());
       EXPECT_EQ(result, answers[i][j])
           << "expect matching_index and waypoint_index: (" + answers[i][j].first + "," +
                  answers[i][j].second + "), but got: (" + result.first + "," + result.second + ")";
       ++j;
     }
+    EXPECT_EQ(j, answers[i].size());
   }
 }
 
