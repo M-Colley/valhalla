@@ -56,6 +56,7 @@
    * FIXED: apply pedestrian direction restrictions independently of vehicle oneways.
    * FIXED: release adjusted frequency departures after transit lookup, including transfer retries [#6412](https://github.com/valhalla/valhalla/issues/6412)
    * FIXED: initialize parsed costing defaults when creating costings and map matchers from an enum.
+   * FIXED: apply configured costing-specific map-matching values before allowed request overrides.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)

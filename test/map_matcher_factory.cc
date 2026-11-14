@@ -7,7 +7,10 @@
 
 #include <boost/property_tree/ptree.hpp>
 
+#include <memory>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 #if !defined(VALHALLA_SOURCE_DIR)
 #define VALHALLA_SOURCE_DIR
@@ -25,6 +28,94 @@ void create_costing_options(Costing::Type costing,
   const rapidjson::Document doc;
   options.set_costing_type(costing);
   sif::ParseCosting(doc, "/costing_options", options, warnings);
+}
+
+TEST(MapMatcherFactory, ConfiguredCostingValues) {
+  const auto root = test::make_config("/data/valhalla");
+  meili::MapMatcherFactory factory(root);
+  Options options;
+  for (const auto& [costing, expected] :
+       std::vector<std::pair<Costing::Type, float>>{{Costing::auto_, 200.f},
+                                                    {Costing::pedestrian, 100.f},
+                                                    {Costing::bicycle, 140.f},
+                                                    {Costing::multimodal, 70.f},
+                                                    {Costing::truck, 0.f}}) {
+    options.set_costing_type(costing);
+    EXPECT_FLOAT_EQ(factory.MergeConfig(options).transition_cost.turn_penalty_factor, expected)
+        << Costing_Enum_Name(costing);
+  }
+}
+
+TEST(MapMatcherFactory, CostingConfigPrecedenceAndIsolation) {
+  auto root = test::make_config("/data/valhalla");
+  root.put("meili.default.search_radius", 11);
+  root.put("meili.default.beta", 5);
+  root.put("meili.auto.search_radius", 22);
+  root.put("meili.auto.breakage_distance", 4321);
+  root.put("meili.pedestrian.search_radius", 33);
+  meili::MapMatcherFactory factory(root);
+  Options options;
+  options.set_costing_type(Costing::auto_);
+  auto config = factory.MergeConfig(options);
+  EXPECT_FLOAT_EQ(config.candidate_search.search_radius_meters, 22.f);
+  EXPECT_FLOAT_EQ(config.transition_cost.beta, 5.f);
+  EXPECT_FLOAT_EQ(config.transition_cost.breakage_distance_meters, 4321.f);
+
+  options.set_search_radius(44);
+  options.set_turn_penalty_factor(99);
+  options.set_breakage_distance(123);
+  config = factory.MergeConfig(options);
+  EXPECT_FLOAT_EQ(config.candidate_search.search_radius_meters, 44.f);
+  EXPECT_FLOAT_EQ(config.transition_cost.turn_penalty_factor, 99.f);
+  EXPECT_FLOAT_EQ(config.transition_cost.breakage_distance_meters, 4321.f)
+      << "configured values apply even when request overrides are disabled";
+
+  options.Clear();
+  options.set_costing_type(Costing::pedestrian);
+  EXPECT_FLOAT_EQ(factory.MergeConfig(options).candidate_search.search_radius_meters, 33.f);
+  options.set_costing_type(Costing::truck);
+  EXPECT_FLOAT_EQ(factory.MergeConfig(options).candidate_search.search_radius_meters, 11.f);
+  options.set_costing_type(Costing::auto_);
+  EXPECT_FLOAT_EQ(factory.MergeConfig(options).candidate_search.search_radius_meters, 22.f)
+      << "request and other costing values must not mutate stored configurations";
+}
+
+TEST(MapMatcherFactory, CostingConfigPreservesRequestAllowlist) {
+  auto root = test::make_config("/data/valhalla");
+  root.put_child("meili.customizable", ptree{});
+  root.put("meili.auto.search_radius", 12);
+  root.put("meili.auto.gps_accuracy", 3);
+  root.put("meili.auto.interpolation_distance", 8);
+  meili::MapMatcherFactory factory(root);
+  Options options;
+  options.set_costing_type(Costing::auto_);
+  options.set_search_radius(90);
+  options.set_turn_penalty_factor(0);
+  options.set_gps_accuracy(90);
+  options.set_interpolation_distance(90);
+  const auto config = factory.MergeConfig(options);
+  EXPECT_FLOAT_EQ(config.candidate_search.search_radius_meters, 12.f);
+  EXPECT_FLOAT_EQ(config.transition_cost.turn_penalty_factor, 200.f);
+  EXPECT_FLOAT_EQ(config.emission_cost.gps_accuracy_meters, 3.f);
+  EXPECT_FLOAT_EQ(config.routing.interpolation_distance_meters, 8.f);
+}
+
+TEST(MapMatcherFactory, CostingConfigIsValidated) {
+  auto root = test::make_config("/data/valhalla");
+  root.put("meili.bicycle.beta", 0);
+  EXPECT_THROW(meili::MapMatcherFactory factory(root), std::invalid_argument);
+}
+
+TEST(MapMatcherFactory, MatcherReceivesCostingConfig) {
+  auto root = test::make_config("/data/valhalla");
+  root.put("meili.auto.search_radius", 12);
+  meili::MapMatcherFactory factory(root);
+  Api api;
+  auto& options = *api.mutable_options();
+  create_costing_options(Costing::auto_, options, *api.mutable_info()->mutable_warnings());
+  std::unique_ptr<meili::MapMatcher> matcher(factory.Create(options));
+  EXPECT_FLOAT_EQ(matcher->config().candidate_search.search_radius_meters, 12.f);
+  EXPECT_FLOAT_EQ(matcher->config().transition_cost.turn_penalty_factor, 200.f);
 }
 
 TEST(MapMatcherFactory, TestMapMatcherFactory) {
