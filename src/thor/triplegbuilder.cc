@@ -1904,6 +1904,9 @@ void TripLegBuilder::Build(
   // Structures to process admins
   std::unordered_map<AdminInfo, uint32_t, AdminInfo::AdminInfoHasher> admin_info_map;
   std::vector<AdminInfo> admin_info_list;
+  const bool include_admin_index = controller(kNodeAdminIndex);
+  const bool collect_admins =
+      include_admin_index || controller.category_attribute_enabled(kAdminCategory);
 
   // Iterate through path
   uint32_t prior_opp_local_index = -1;
@@ -2013,9 +2016,12 @@ void TripLegBuilder::Build(
     }
 
     // Assign the admin index
-    if (controller(kNodeAdminIndex)) {
-      trip_node->set_admin_index(
-          GetAdminIndex(start_tile->admininfo(node->admin_index()), admin_info_map, admin_info_list));
+    if (collect_admins) {
+      const auto admin_index =
+          GetAdminIndex(start_tile->admininfo(node->admin_index()), admin_info_map, admin_info_list);
+      if (include_admin_index) {
+        trip_node->set_admin_index(admin_index);
+      }
     }
 
     if (controller(kNodeTimeZone)) {
@@ -2282,14 +2288,17 @@ void TripLegBuilder::Build(
 
   // Add the last node
   auto* node = trip_path.add_node();
-  if (controller(kNodeAdminIndex)) {
+  if (collect_admins) {
     auto last_tile = graphreader.GetGraphTile(startnode);
     if (last_tile == nullptr) {
       throw tile_gone_error_t("TripLegBuilder::Build failed", startnode);
     }
-    node->set_admin_index(
+    const auto admin_index =
         GetAdminIndex(last_tile->admininfo(last_tile->node(startnode)->admin_index()), admin_info_map,
-                      admin_info_list));
+                      admin_info_list);
+    if (include_admin_index) {
+      node->set_admin_index(admin_index);
+    }
   }
   if (controller(kNodeElapsedTime)) {
     node->mutable_cost()->mutable_elapsed_cost()->set_seconds(std::prev(path_end)->elapsed_cost.secs);
