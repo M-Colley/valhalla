@@ -24,15 +24,20 @@ constexpr size_t TEXT = 0;
 constexpr size_t IS_ROUTE_NUMBER = 1;
 constexpr size_t CONSECUTIVE_COUNT = 2;
 
+const Options kDefaultOptions;
+
 // Sub class to test protected methods
 class ManeuversBuilderTest : public ManeuversBuilder {
 public:
-  ManeuversBuilderTest(const Options& options = Options()) : ManeuversBuilder(options, nullptr) {
+  ManeuversBuilderTest(const Options& options = kDefaultOptions)
+      : ManeuversBuilder(options, nullptr) {
   }
 
   ManeuversBuilderTest(const Options& options, EnhancedTripLeg* etp)
       : ManeuversBuilder(options, etp) {
   }
+
+  using ManeuversBuilder::GetSpeed;
 
   void Combine(std::list<Maneuver>& maneuvers) {
     ManeuversBuilder::Combine(maneuvers);
@@ -164,6 +169,43 @@ TEST(Maneuversbuilder, ProcessTurnLanesBeforeDestination) {
 
   EXPECT_EQ(edge->turn_lanes(0).state(), TurnLane::kValid);
   EXPECT_EQ(edge->turn_lanes(1).state(), TurnLane::kActive);
+}
+
+TEST(Maneuversbuilder, GetSpeedUsesCostingOptions) {
+  Options options;
+  auto& costings = *options.mutable_costings();
+  costings[Costing::pedestrian].mutable_options()->set_walking_speed(3.6f);
+  costings[Costing::bicycle].mutable_options()->set_cycling_speed(12.f);
+  ManeuversBuilderTest builder(options);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kPedestrian, 50.f), 3.6f);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kBicycle, 50.f), 12.f);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kDrive, 37.f), 37.f);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kTransit, 29.f), 29.f);
+}
+TEST(Maneuversbuilder, GetSpeedPreservesMissingDefaults) {
+  ManeuversBuilderTest defaults;
+  EXPECT_FLOAT_EQ(defaults.GetSpeed(TravelMode::kPedestrian, 50.f), 5.1f);
+  EXPECT_FLOAT_EQ(defaults.GetSpeed(TravelMode::kBicycle, 50.f), 20.f);
+  Options options;
+  auto& costings = *options.mutable_costings();
+  costings[Costing::pedestrian].mutable_options();
+  costings[Costing::bicycle].mutable_options();
+  ManeuversBuilderTest empty(options);
+  EXPECT_FLOAT_EQ(empty.GetSpeed(TravelMode::kPedestrian, 50.f), 5.1f);
+  EXPECT_FLOAT_EQ(empty.GetSpeed(TravelMode::kBicycle, 50.f), 20.f);
+}
+TEST(Maneuversbuilder, GetSpeedKeepsCostingModelsSeparate) {
+  Options options;
+  auto& costings = *options.mutable_costings();
+  costings[Costing::pedestrian].mutable_options()->set_cycling_speed(42.f);
+  costings[Costing::bicycle].mutable_options()->set_walking_speed(2.f);
+  ManeuversBuilderTest builder(options);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kPedestrian, 50.f), 5.1f);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kBicycle, 50.f), 20.f);
+  costings[Costing::pedestrian].mutable_options()->set_walking_speed(4.f);
+  costings[Costing::bicycle].mutable_options()->set_cycling_speed(18.f);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kPedestrian, 50.f), 4.f);
+  EXPECT_FLOAT_EQ(builder.GetSpeed(TravelMode::kBicycle, 50.f), 18.f);
 }
 
 void TrySetSimpleDirectionalManeuverType(uint32_t turn_degree, DirectionsLeg_Maneuver_Type expected) {
