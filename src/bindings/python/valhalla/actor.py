@@ -76,6 +76,11 @@ class Actor(_Actor):
         return super().matrix(req)
 
     @dict_or_str
+    def sources_to_targets(self, req: Union[str, dict]) -> Union[str, dict]:
+        """Alias for matrix."""
+        return super().sources_to_targets(req)
+
+    @dict_or_str
     def trace_route(self, req: Union[str, dict]) -> Union[str, dict]:
         """Map-matching for a set of input locations, e.g. from a GPS."""
         return super().trace_route(req)

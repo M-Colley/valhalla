@@ -87,6 +87,7 @@ print(get_help()["service_limits"]["auto"]["max_distance"])
 # instantiate Actor to load graph and call actions
 actor = Actor(config)
 route = actor.route({"locations": [...]})
+# actor.matrix(request) is also available as actor.sources_to_targets(request)
 ```
 
 #### Error Handling

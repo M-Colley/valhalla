@@ -87,6 +87,13 @@ public:
                      const std::function<void()>* interrupt = nullptr,
                      Api* api = nullptr);
 
+  // Alias for matrix, matching the action name.
+  std::string sources_to_targets(const std::string& request_str,
+                                 const std::function<void()>* interrupt = nullptr,
+                                 Api* api = nullptr) {
+    return matrix(request_str, interrupt, api);
+  }
+
   /**
    * Perform the optimized_route action and return json or protobuf depending on which was requested.
    * The request may either be in the form of a json string provided by the request_str parameter or

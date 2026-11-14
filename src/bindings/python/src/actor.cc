@@ -56,6 +56,10 @@ void init_actor(nb::module_& m) {
           "matrix", [](vt::actor_t& self, std::string& req) { return self.matrix(req); },
           nb::call_guard<nb::gil_scoped_release>())
       .def(
+          "sources_to_targets",
+          [](vt::actor_t& self, std::string& req) { return self.sources_to_targets(req); },
+          nb::call_guard<nb::gil_scoped_release>())
+      .def(
           "isochrone", [](vt::actor_t& self, std::string& req) { return self.isochrone(req); },
           nb::call_guard<nb::gil_scoped_release>())
       .def(

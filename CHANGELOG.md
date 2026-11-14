@@ -1,5 +1,7 @@
 ## UNRELEASED
 * **Removed**
+* **Added**
+   * Add `sources_to_targets` as an alias for the C++ and Python `matrix` methods.
 * **Bug Fix**
    * FIXED: use host build tools and avoid importing target Python modules when cross-compiling.
    * FIXED: supply numeric Windows version defaults in the MinGW time-zone implementation.
