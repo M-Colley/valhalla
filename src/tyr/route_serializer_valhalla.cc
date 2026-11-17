@@ -347,6 +347,7 @@ void legs(valhalla::Api& api, int route_index, rapidjson::writer_wrapper_t& writ
         else
           writer("time_" + recost_itr->name(), std::nullptr_t());
         ++recost_itr;
+        ++begin_recost_itr;
       }
 
       // Portions toll, highway, ferry and rough
