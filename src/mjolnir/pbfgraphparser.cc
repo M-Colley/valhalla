@@ -4114,8 +4114,8 @@ struct graph_parser {
       }
     } else if (isConnectivity && (!to_lanes.empty() || !to.empty()) &&
                (!from_lanes.empty() || !from.empty())) {
-      uint32_t from_way_id = 0;
-      uint32_t to_way_id = 0;
+      uint64_t from_way_id = 0;
+      uint64_t to_way_id = 0;
       for (const auto& member : members) {
         // from and to must be of type 1(way).
         if (member.role == "from" && member.member_type == osmium::item_type::way) {

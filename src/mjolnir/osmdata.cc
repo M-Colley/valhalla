@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 
 using namespace valhalla::mjolnir;
 using valhalla::baldr::ConditionalSpeedLimit;
@@ -558,18 +559,25 @@ bool read_unique_names(const std::string& filename, UniqueNames& names) {
 }
 
 bool read_lane_connectivity(const std::string& filename, OSMLaneConnectivityMultiMap& lane_map) {
-  // Open file and truncate
-  std::ifstream file(filename, std::ios::in | std::ios::binary);
+  std::ifstream file(filename, std::ios::in | std::ios::binary | std::ios::ate);
   if (!file.is_open()) {
     LOG_ERROR("read_lane_connectivity failed to open input file: " + filename);
     return false;
   }
 
-  // Read the count and then the temporary lane connectivity list
+  const auto file_size = file.tellg();
+  file.seekg(0);
   uint32_t count = 0;
   file.read(reinterpret_cast<char*>(&count), sizeof(uint32_t));
+  const uint64_t expected_size = sizeof(count) + uint64_t{count} * sizeof(TempLaneConnectivity);
+  if (!file || file_size < 0 || static_cast<uint64_t>(file_size) != expected_size) {
+    throw std::runtime_error("Incompatible lane connectivity temporary file: " + filename +
+                             ". Restart tile building from parsing.");
+  }
   std::vector<TempLaneConnectivity> lanes(count);
-  file.read(reinterpret_cast<char*>(lanes.data()), count * sizeof(TempLaneConnectivity));
+  if (!file.read(reinterpret_cast<char*>(lanes.data()), count * sizeof(TempLaneConnectivity))) {
+    throw std::runtime_error("Failed to read lane connectivity temporary file: " + filename);
+  }
   file.close();
 
   // Iterate through the temporary lane connectivity list and add to the lane connectivity multi-map

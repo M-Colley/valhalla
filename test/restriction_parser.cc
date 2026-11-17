@@ -34,7 +34,8 @@ ParsedRestriction
 parse_restriction(const std::vector<std::pair<std::string, std::string>>& tags,
                   const std::vector<uint64_t>& from_ids,
                   bool via_way = false,
-                  const std::vector<osmium::builder::attr::member_type>& extra_vias = {}) {
+                  const std::vector<osmium::builder::attr::member_type>& extra_vias = {},
+                  uint64_t to_id = kTo) {
   const auto directory = std::filesystem::path(VALHALLA_BUILD_DIR "test/data/restriction_parser") /
                          ::testing::UnitTest::GetInstance()->current_test_info()->name();
   std::filesystem::create_directories(directory);
@@ -47,7 +48,7 @@ parse_restriction(const std::vector<std::pair<std::string, std::string>>& tags,
     members.push_back({osmium::item_type::way, static_cast<osmium::object_id_type>(id), "from"});
   members.push_back({via_way ? osmium::item_type::way : osmium::item_type::node, kVia, "via"});
   members.insert(members.end(), extra_vias.begin(), extra_vias.end());
-  members.push_back({osmium::item_type::way, kTo, "to"});
+  members.push_back({osmium::item_type::way, static_cast<osmium::object_id_type>(to_id), "to"});
   osmium::memory::Buffer buffer(1024, osmium::memory::Buffer::auto_grow::yes);
   osmium::builder::add_relation(buffer, osmium::builder::attr::_id(1),
                                 osmium::builder::attr::_version(1),
@@ -184,6 +185,25 @@ TEST(RestrictionParser, OrdinaryTurnRestriction) {
   EXPECT_EQ(restriction.type(), RestrictionType::kNoLeftTurn);
   EXPECT_EQ(restriction.to(), kTo);
   EXPECT_EQ(restriction.via(), kVia);
+}
+
+TEST(RestrictionParser, LaneConnectivityPreservesWayIds) {
+  for (const auto [from, to] : {std::pair<uint64_t, uint64_t>{101, 103},
+                                {kSecondFrom, 103},
+                                {101, kSecondFrom},
+                                {uint64_t{1} << 32, uint64_t{1} << 33}}) {
+    SCOPED_TRACE(::testing::Message() << from << " -> " << to);
+    const auto result =
+        parse_restriction({{"type", "connectivity"}, {"from:lanes", "1|2"}, {"to:lanes", "2|3"}},
+                          {from}, false, {}, to);
+    ASSERT_EQ(result.data.lane_connectivity_map.size(), 1);
+    const auto found = result.data.lane_connectivity_map.find(to);
+    ASSERT_NE(found, result.data.lane_connectivity_map.end());
+    EXPECT_EQ(found->second.to_way_id, to);
+    EXPECT_EQ(found->second.from_way_id, from);
+    EXPECT_EQ(result.data.name_offset_map.name(found->second.from_lanes_index), "1|2");
+    EXPECT_EQ(result.data.name_offset_map.name(found->second.to_lanes_index), "2|3");
+  }
 }
 
 } // namespace
