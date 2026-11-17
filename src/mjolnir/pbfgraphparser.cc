@@ -4177,9 +4177,9 @@ struct graph_parser {
       if (!invalid_members && has_from && (restriction.via() || vias.size()) && restriction.to()) {
         // no_entry can have several incoming ways. Other restrictions keep their
         // existing single-from interpretation.
-        std::span<const uint64_t> froms(&from_way_id, 1);
+        std::span<const uint64_t> from_ways(&from_way_id, 1);
         if (!from_way_ids.empty())
-          froms = from_way_ids;
+          from_ways = from_way_ids;
         // check for exceptions
         // isTypeRestriction == true means has restriction:<vehicle> key; otherwise, just a
         // restriction key
@@ -4273,7 +4273,7 @@ struct graph_parser {
             // for bi-directional we need to create the restriction in reverse.  flip the to and
             // from. also in order to avoid duplicate data in the from and to restrictions, we
             // only need to store the mode, from, and to for the to_restrictions.
-            for (const auto from_id : froms) {
+            for (const auto from_id : from_ways) {
               restriction.set_from(from_id);
               to_restriction.set_from(restriction.to());
               to_restriction.set_to(from_id);
@@ -4298,7 +4298,7 @@ struct graph_parser {
           // for bi-directional we need to create the restriction in reverse.  flip the to and from.
           // also in order to avoid duplicate data in the from and to restrictions, we only need
           // to store the mode, from, and to for the to_restrictions.
-          for (const auto from_id : froms) {
+          for (const auto from_id : from_ways) {
             osmdata_.via_set.insert(from_id);
             restriction.set_from(from_id);
             to_restriction.set_from(restriction.to());
@@ -4308,7 +4308,7 @@ struct graph_parser {
             complex_restrictions_from_->push_back(restriction);
           }
         } else { // simple restriction
-          for (const auto from_id : froms)
+          for (const auto from_id : from_ways)
             osmdata_.restrictions.insert(RestrictionsMultiMap::value_type(from_id, restriction));
         }
       }

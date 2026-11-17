@@ -120,13 +120,13 @@ TEST(RestrictionParser, InvalidViaMembersRemainRejected) {
   }
 }
 
-void expect_complex_froms(const ParsedRestriction& result, bool bicycle_restricted) {
+void expect_complex_from_ways(const ParsedRestriction& result, bool bicycle_restricted) {
   EXPECT_TRUE(result.data.restrictions.empty());
   ASSERT_EQ(result.from.size(), 2);
   ASSERT_EQ(result.to.size(), 2);
-  std::set<uint64_t> froms, reverse_tos;
+  std::set<uint64_t> from_ways, reverse_tos;
   for (const auto& restriction : result.from) {
-    froms.insert(restriction.from());
+    from_ways.insert(restriction.from());
     EXPECT_EQ(restriction.to(), kTo);
     EXPECT_TRUE(restriction.modes() & kAutoAccess);
     EXPECT_EQ(static_cast<bool>(restriction.modes() & kBicycleAccess), bicycle_restricted);
@@ -135,15 +135,15 @@ void expect_complex_froms(const ParsedRestriction& result, bool bicycle_restrict
     EXPECT_EQ(restriction.from(), kTo);
     reverse_tos.insert(restriction.to());
   }
-  EXPECT_EQ(froms, (std::set<uint64_t>{kFirstFrom, kSecondFrom}));
-  EXPECT_EQ(reverse_tos, froms);
+  EXPECT_EQ(from_ways, (std::set<uint64_t>{kFirstFrom, kSecondFrom}));
+  EXPECT_EQ(reverse_tos, from_ways);
 }
 
 TEST(RestrictionParser, NoEntryMultipleFromWithException) {
   const auto result =
       parse_restriction({{"type", "restriction"}, {"restriction", "no_entry"}, {"except", "bicycle"}},
                         {kFirstFrom, kSecondFrom});
-  expect_complex_froms(result, false);
+  expect_complex_from_ways(result, false);
   for (const auto& restriction : result.from)
     EXPECT_EQ(restriction.vias(), std::vector<uint64_t>{kTo});
 }
@@ -151,7 +151,7 @@ TEST(RestrictionParser, NoEntryMultipleFromWithException) {
 TEST(RestrictionParser, NoEntryMultipleFromWithViaWay) {
   const auto result = parse_restriction({{"type", "restriction"}, {"restriction", "no_entry"}},
                                         {kFirstFrom, kSecondFrom}, true);
-  expect_complex_froms(result, true);
+  expect_complex_from_ways(result, true);
   for (const auto& restriction : result.from)
     EXPECT_EQ(restriction.vias(), std::vector<uint64_t>{kVia});
 }
@@ -161,7 +161,7 @@ TEST(RestrictionParser, NoEntryConditionalMultipleFrom) {
       parse_restriction({{"type", "restriction"},
                          {"restriction:conditional", "no_entry @ (Mo-Fr 08:00-10:00)"}},
                         {kFirstFrom, kSecondFrom});
-  expect_complex_froms(result, true);
+  expect_complex_from_ways(result, true);
   for (const auto& restriction : result.from)
     EXPECT_NE(restriction.time_domain(), 0);
 }
@@ -170,7 +170,7 @@ TEST(RestrictionParser, NoEntryProbableMultipleFrom) {
   const auto result = parse_restriction({{"type", "restriction"},
                                          {"restriction:probable", "no_entry @ probability=50"}},
                                         {kFirstFrom, kSecondFrom});
-  expect_complex_froms(result, true);
+  expect_complex_from_ways(result, true);
   for (const auto& restriction : result.from) {
     EXPECT_EQ(restriction.type(), RestrictionType::kNoProbable);
     EXPECT_EQ(restriction.probability(), 50);
