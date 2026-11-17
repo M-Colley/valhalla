@@ -275,6 +275,7 @@ void TryClip(Polyline2<Point2>& pl, const AABB2<Point2>& a, const uint32_t exp) 
 void TryClipOutside(Polyline2<Point2>& pl, const AABB2<Point2>& a) {
   uint32_t x = pl.Clip(a);
   EXPECT_EQ(x, 0) << "Clip test failed: all vertices outside so count should be 0";
+  EXPECT_TRUE(pl.pts().empty());
 }
 
 TEST(Polyline2, TestClip) {
@@ -318,6 +319,18 @@ TEST(Polyline2, TestClippedPolyline) {
                              Point2(50.0f, 100.0f)};
   Polyline2<Point2> pl(pts);
   TryClippedPolyline(pl, AABB2<Point2>(Point2(0.0f, 0.0f), Point2(75.0f, 50.0f)));
+}
+
+TEST(Polyline2, ClippedPolylineOutsideBounds) {
+  const AABB2<Point2> box(0, 0, 2, 2);
+  for (const auto& points : std::vector<std::vector<Point2>>{{{-2, 1}, {-1, 1}},
+                                                             {{3, 1}, {4, 1}},
+                                                             {{1, -2}, {1, -1}},
+                                                             {{1, 3}, {1, 4}}}) {
+    Polyline2<Point2> line(points);
+    EXPECT_TRUE(line.ClippedPolyline(box).pts().empty());
+    EXPECT_EQ(line.pts(), points);
+  }
 }
 
 } // namespace
