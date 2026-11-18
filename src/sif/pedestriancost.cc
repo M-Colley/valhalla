@@ -985,12 +985,11 @@ public:
   using PedestrianCost::service_penalty_;
 };
 
-TestPedestrianCost* make_pedestriancost_from_json(const std::string& property,
-                                                  float testVal,
-                                                  const std::string& /*type*/) {
+TestPedestrianCost*
+make_pedestriancost_from_json(const std::string& property, float testVal, const std::string& type) {
   std::stringstream ss;
-  ss << R"({"costing": "pedestrian", "costing_options":{"pedestrian":{")" << property << R"(":)"
-     << testVal << "}}}";
+  ss << R"({"costing": "pedestrian", "costing_options":{"pedestrian":{"type":")" << type << R"(",")"
+     << property << R"(":)" << testVal << "}}}";
   Api request;
   ParseApi(ss.str(), valhalla::Options::route, request);
   return new TestPedestrianCost(request.options().costings().find(Costing::pedestrian)->second);
@@ -1203,13 +1202,13 @@ defaults.use_ferry_.max));
   }
 
   // transit_start_end_max_distance_
-  int_distributor.reset(make_distributor_from_range(kTransitTransferMaxDistanceRange));
+  int_distributor.reset(make_distributor_from_range(kMultimodalStartEndMaxDistanceRange));
   for (unsigned i = 0; i < testIterations; ++i) {
     ctorTester.reset(make_pedestriancost_from_json("transit_start_end_max_distance",
                                                    (*int_distributor)(generator), "foot"));
     EXPECT_THAT(ctorTester->transit_start_end_max_distance_,
-                test::IsBetween(kTransitTransferMaxDistanceRange.min,
-                                kTransitTransferMaxDistanceRange.max));
+                test::IsBetween(kMultimodalStartEndMaxDistanceRange.min,
+                                kMultimodalStartEndMaxDistanceRange.max));
   }
 
   // transit_transfer_max_distance_

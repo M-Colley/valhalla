@@ -409,7 +409,8 @@ set (destination "${CMAKE_BINARY_DIR}/test/data/tile_src")
 #)
 
 ## Test run targets
-foreach(test ${tests} ${cost_inline_tests} ${tyr_inline_tests})
+set(cpp_tests ${tests} cost_inline_tests tyr_inline_tests)
+foreach(test IN LISTS cpp_tests)
   add_custom_command(OUTPUT ${test}.log
     COMMAND ${CMAKE_COMMAND} -E env LOCPATH=${VALHALLA_SOURCE_DIR}/locales bash ${VALHALLA_SOURCE_DIR}/scripts/run_single_test.sh $<TARGET_FILE:${test}>
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -601,11 +602,11 @@ if(ENABLE_NODE_BINDINGS AND ENABLE_DATA_TOOLS)
 endif()
 
 ## High-level targets
-string(REGEX REPLACE "([^;]+)" "run-\\1" test_targets "${tests};${cost_tests};${tyr_tests};${python_tests};${nodejs_tests}")
+string(REGEX REPLACE "([^;]+)" "run-\\1" test_targets "${cpp_tests};${python_tests};${nodejs_tests}")
 
 add_custom_target(check DEPENDS ${test_targets})
 set_target_properties(check PROPERTIES FOLDER "Tests")
-add_custom_target(tests DEPENDS ${tests} ${cost_tests} ${tyr_tests})
+add_custom_target(tests DEPENDS ${cpp_tests})
 set_target_properties(tests PROPERTIES FOLDER "Tests")
 add_subdirectory(gurka)
 add_subdirectory(scripts)
