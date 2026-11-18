@@ -1,4 +1,5 @@
 import unittest
+from copy import deepcopy
 from unittest.mock import MagicMock
 
 import valhalla_build_config
@@ -6,6 +7,46 @@ import valhalla_build_config
 # mock the add_argument so we can track which arguments it's called with in the main code
 mock_parser = valhalla_build_config.parser
 mock_parser.add_argument = MagicMock()
+
+
+class TestThorLabelLimits(unittest.TestCase):
+    def test_merge_migrates_legacy_limits_when_removing_old_keys(self):
+        existing = {
+            "thor": {
+                "max_reserved_labels_count_astar": 11,
+                "max_reserved_labels_count_bidir_astar": 22,
+                "max_reserved_labels_count_dijkstras": 33,
+                "max_reserved_labels_count_bidir_dijkstras": 44,
+            }
+        }
+        defaults = deepcopy(valhalla_build_config.config)
+        valhalla_build_config.preserve_legacy_thor_label_limits(existing, defaults)
+        merged = valhalla_build_config.merge_json(
+            existing, defaults, valhalla_build_config.MergeReport(), remove_keys=[]
+        )
+
+        self.assertEqual(merged["thor"]["unidirectional_astar"]["max_reserved_labels_count"], 11)
+        self.assertEqual(merged["thor"]["bidirectional_astar"]["max_reserved_labels_count"], 22)
+        self.assertEqual(merged["thor"]["dijkstras"]["max_reserved_labels_count"], 33)
+        self.assertEqual(merged["thor"]["costmatrix"]["max_reserved_labels_count"], 44)
+        for legacy_key in existing["thor"]:
+            self.assertNotIn(legacy_key, merged["thor"])
+
+    def test_merge_keeps_explicit_nested_limit(self):
+        existing = {
+            "thor": {
+                "max_reserved_labels_count_bidir_dijkstras": 44,
+                "costmatrix": {"max_reserved_labels_count": 55},
+            }
+        }
+        defaults = deepcopy(valhalla_build_config.config)
+        valhalla_build_config.preserve_legacy_thor_label_limits(existing, defaults)
+        merged = valhalla_build_config.merge_json(
+            existing, defaults, valhalla_build_config.MergeReport(), remove_keys=None
+        )
+
+        self.assertEqual(merged["thor"]["costmatrix"]["max_reserved_labels_count"], 55)
+        self.assertEqual(merged["thor"]["max_reserved_labels_count_bidir_dijkstras"], 44)
 
 
 class TestBuildConfig(unittest.TestCase):

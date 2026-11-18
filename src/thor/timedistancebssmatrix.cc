@@ -22,8 +22,10 @@ namespace thor {
 // Constructor with cost threshold.
 TimeDistanceBSSMatrix::TimeDistanceBSSMatrix(const boost::property_tree::ptree& config)
     : MatrixAlgorithm(config), settled_count_(0), current_cost_threshold_(0),
-      max_reserved_labels_count_(config.get<uint32_t>("max_reserved_labels_count_dijkstras",
-                                                      kInitialEdgeLabelCountDijkstras)),
+      max_reserved_labels_count_(
+          config.get<uint32_t>("dijkstras.max_reserved_labels_count",
+                               config.get<uint32_t>("max_reserved_labels_count_dijkstras",
+                                                    kInitialEdgeLabelCountDijkstras))),
       clear_reserved_memory_(config.get<bool>("clear_reserved_memory", false)) {
 }
 

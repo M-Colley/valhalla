@@ -129,8 +129,10 @@ private:
 // Constructor with cost threshold.
 CostMatrix::CostMatrix(const boost::property_tree::ptree& config)
     : MatrixAlgorithm(config),
-      max_reserved_labels_count_(config.get<uint32_t>("max_reserved_labels_count_bidir_dijkstras",
-                                                      kInitialEdgeLabelCountBidirDijkstra)),
+      max_reserved_labels_count_(
+          config.get<uint32_t>("costmatrix.max_reserved_labels_count",
+                               config.get<uint32_t>("max_reserved_labels_count_bidir_dijkstras",
+                                                    kInitialEdgeLabelCountBidirDijkstra))),
       max_reserved_locations_count_(
           config.get<uint32_t>("costmatrix.max_reserved_locations", kMaxLocationReservation)),
       check_reverse_connection_(config.get<bool>("costmatrix.check_reverse_connection", true)),
