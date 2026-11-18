@@ -77,7 +77,6 @@ struct expansion_properties_t {
   valhalla::TravelMode mode;
   uint32_t expansion_index;
 
-  expansion_properties_t() = default;
   expansion_properties_t(baldr::GraphId prev_edgeid,
                          Expansion_EdgeStatus status,
                          float duration,
@@ -153,22 +152,28 @@ std::string thor_worker_t::expansion(Api& request) {
           opp_edges.insert(edgeid);
         }
 
-        const auto* edge = tile->directededge(edgeid);
-        auto shape = tile->edgeinfo(edge).shape();
+        const auto previous = dedupe ? edge_state.find(edgeid) : edge_state.end();
+        if (previous != edge_state.end() &&
+            !expansion_properties_t::is_latest_status(previous->second.status, status)) {
+          return;
+        }
 
-        if (!edge->forward())
-          std::reverse(shape.begin(), shape.end());
-        Polyline2<PointLL>::Generalize(shape, gen_factor, {}, false);
+        std::vector<PointLL> shape;
+        if (previous == edge_state.end()) {
+          const auto* edge = tile->directededge(edgeid);
+          shape = tile->edgeinfo(edge).shape();
+          if (!edge->forward())
+            std::reverse(shape.begin(), shape.end());
+          Polyline2<PointLL>::Generalize(shape, gen_factor, {}, false);
+        } else {
+          // Progress can change the edge's properties, but its shape is fixed for the request.
+          shape = std::move(previous->second.shape);
+        }
         if (dedupe) {
-          if (auto it = edge_state.find(edgeid); it != edge_state.end()) {
-            // Keep only properties of last/highest status of edge
-            if (!expansion_properties_t::is_latest_status(it->second.status, status)) {
-              return;
-            }
-          }
-          edge_state[edgeid] =
-              expansion_properties_t(prev_edgeid, status, duration, distance, std::move(shape), cost,
-                                     expansion_type, flow_sources, mode, expansion_index);
+          edge_state.insert_or_assign(edgeid,
+                                      expansion_properties_t(prev_edgeid, status, duration, distance,
+                                                             std::move(shape), cost, expansion_type,
+                                                             flow_sources, mode, expansion_index));
         } else {
           writeExpansionProgress(expansion, edgeid, prev_edgeid, shape, exp_props, status, duration,
                                  distance, cost, expansion_type, flow_sources, mode, expansion_index);
