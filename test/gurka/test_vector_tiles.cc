@@ -44,6 +44,25 @@ struct linestring_handler_t {
 };
 } // namespace
 
+TEST(VectorTilesBasic, AttributeDescriptors) {
+  auto check = [](const auto& attributes) {
+    for (const auto& attribute : attributes) {
+      ASSERT_NE(attribute.key_name, nullptr);
+      ASSERT_NE(attribute.attribute_flag.data(), nullptr);
+      ASSERT_LT(attribute.attribute_flag.size(), 128);
+      EXPECT_FALSE(attribute.attribute_flag.empty());
+      EXPECT_NE(attribute.key_member, nullptr);
+    }
+  };
+  check(loki::detail::kForwardEdgeAttributes);
+  check(loki::detail::kReverseEdgeAttributes);
+  check(loki::detail::kForwardLiveSpeedAttributes);
+  check(loki::detail::kReverseLiveSpeedAttributes);
+  check(loki::detail::kSharedEdgeAttributes);
+  check(loki::detail::kNodeAttributes);
+  check(loki::detail::kIncidentAttributes);
+}
+
 TEST(VectorTilesBasic, ConfigFail) {
   // zoom config with descending levels fails
   auto config = test::make_config(std::filesystem::temp_directory_path().generic_string());
