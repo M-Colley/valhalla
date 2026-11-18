@@ -19,6 +19,7 @@ Important build options include:
 | `-DENABLE_CCACHE` (`On` / `Off`) | Speed up incremental rebuilds via `ccache` (defaults to on)|
 | `-DENABLE_BENCHMARKS` (`On` / `Off`) | Enable microbenchmarking (defaults to on)|
 | `-DENABLE_TESTS` (`On` / `Off`) | Enable Valhalla tests (defaults to on)|
+| `-DUSE_SYSTEM_GTEST` (`On` / `Off`) | Use an installed GoogleTest 1.12 or newer and GoogleMock CMake package for tests or `INSTALL_TEST_LIB` instead of bundled sources (defaults to off). The installed libraries must use a compatible C++ runtime. |
 | `-DENABLE_COVERAGE` (`On` / `Off`) | Build with coverage instrumentalisation (defaults to off)|
 | `-DBUILD_SHARED_LIBS` (`On` / `Off`) | Build static or shared libraries (defaults to off)|
 | `-DENABLE_STATIC_LIBRARY_MODULES` (`On` / `Off`) | If ON builds Valhalla modules as STATIC library targets (defaults to off)|

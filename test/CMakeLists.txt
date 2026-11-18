@@ -1,22 +1,23 @@
-# GoogleTest builds with /MT(d) by default, which is incompatible with Valhalla's /MD(d) builds.
-#
-# /MD(d) links the C++ runtime dynamically, while /MT(d) links it statically.
-#
-# Force it to use the same CRT as Valhalla /MD(d). Technically Valhalla doesn't enforce /MD(d) but
-# it is the CMake default. It can be switched by MSVC_RUNTIME_LIBRARY, but GoogleTest is ignoring
-# this.
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+if(USE_SYSTEM_GTEST)
+  find_package(GTest 1.12 CONFIG REQUIRED)
+  foreach(gtest_target GTest::gtest GTest::gtest_main GTest::gmock)
+    if(NOT TARGET ${gtest_target})
+      message(FATAL_ERROR "System GoogleTest package must provide ${gtest_target}")
+    endif()
+  endforeach()
+  set(valhalla_gtest_targets GTest::gtest GTest::gtest_main GTest::gmock)
+else()
+  # Match the MSVC runtime used by Valhalla when building the bundled sources.
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  set(INSTALL_GTEST ${INSTALL_TEST_LIB})
+  add_subdirectory(${VALHALLA_SOURCE_DIR}/third_party/googletest ${CMAKE_BINARY_DIR}/googletest)
 
-# don't install googletest
-# unless you want the test library
-set(INSTALL_GTEST ${INSTALL_TEST_LIB})
-
-add_subdirectory(${VALHALLA_SOURCE_DIR}/third_party/googletest ${CMAKE_BINARY_DIR}/googletest)
-
-set_target_properties(gtest PROPERTIES FOLDER "Dependencies")
-set_target_properties(gtest_main PROPERTIES FOLDER "Dependencies")
-set_target_properties(gmock PROPERTIES FOLDER "Dependencies")
-set_target_properties(gmock_main PROPERTIES FOLDER "Dependencies")
+  set_target_properties(gtest PROPERTIES FOLDER "Dependencies")
+  set_target_properties(gtest_main PROPERTIES FOLDER "Dependencies")
+  set_target_properties(gmock PROPERTIES FOLDER "Dependencies")
+  set_target_properties(gmock_main PROPERTIES FOLDER "Dependencies")
+  set(valhalla_gtest_targets gtest gtest_main gmock)
+endif()
 
 enable_testing()
 include(GoogleTest)
@@ -39,6 +40,12 @@ add_library(valhalla_test
   ${VALHALLA_SOURCE_DIR}/third_party/microtar/src/microtar.h
   ${VALHALLA_SOURCE_DIR}/third_party/microtar/src/microtar.c
   )
+if(USE_SYSTEM_GTEST)
+  # Keep headers from the selected package ahead of other dependency prefixes.
+  target_include_directories(valhalla_test BEFORE PUBLIC
+    $<TARGET_PROPERTY:GTest::gtest,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:GTest::gmock,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
 target_include_directories(valhalla_test PUBLIC
   ${VALHALLA_SOURCE_DIR}/test
   ${VALHALLA_SOURCE_DIR}/test/gurka)
@@ -49,7 +56,7 @@ target_include_directories(valhalla_test SYSTEM PUBLIC
   ${VALHALLA_SOURCE_DIR}/third_party/microtar/src
   ${vtzero_include_dirs})
 target_link_libraries(valhalla_test
-  valhalla gtest gtest_main gmock
+  valhalla ${valhalla_gtest_targets}
   $<$<BOOL:${ENABLE_COVERAGE}>:gcov>
   ${CMAKE_THREAD_LIBS_INIT} ${lz4_target})
 target_compile_definitions(valhalla_test PUBLIC
