@@ -2379,20 +2379,23 @@ struct graph_parser {
     uint64_t changeset_id;
   };
 
-  static void transform_way(const osmium::Way& way,
-                            LuaTagTransform& lua,
-                            const Tags& empty_way_tags,
-                            std::vector<Way>& transformed) {
+  // Returns the first negative node reference, or zero when all references are valid.
+  static osmium::object_id_type transform_way(const osmium::Way& way,
+                                              LuaTagTransform& lua,
+                                              const Tags& empty_way_tags,
+                                              std::vector<Way>& transformed) {
     std::vector<uint64_t> nodes;
     nodes.reserve(way.nodes().size());
     for (const auto& node : way.nodes()) {
+      if (node.ref() < 0)
+        return node.ref();
       nodes.push_back(node.ref());
     }
 
     // Do not add ways with < 2 nodes. Log error or add to a problem list
     // TODO - find out if we do need these, why they exist...
     if (nodes.size() < 2) {
-      return;
+      return 0;
     }
 
     // Throw away closed features with following tags: building, landuse,
@@ -2402,7 +2405,7 @@ struct graph_parser {
         std::string_view key = tag.key();
         if (key == "building" || key == "landuse" || key == "leisure" || key == "natural") {
           // LOG_INFO("Loop wayid " + std::to_string(osmid) + " Discard?");
-          return;
+          return 0;
         }
       }
     }
@@ -2412,11 +2415,12 @@ struct graph_parser {
     Tags tags =
         way.tags().empty() ? empty_way_tags : lua.Transform(OSMType::kWay, way.id(), way.tags());
     if (tags.empty()) {
-      return;
+      return 0;
     }
 
     transformed.emplace_back(
         Way{static_cast<uint64_t>(way.id()), std::move(nodes), std::move(tags), way.changeset()});
+    return 0;
   }
 
   void way(const Way& way) {
@@ -5291,17 +5295,13 @@ OSMData PBFGraphParser::ParseWays(const boost::property_tree::ptree& pt,
               negative_id_seen.store(true, std::memory_order_relaxed);
               break;
             }
-            for (const auto& node : way.nodes()) {
-              if (node.ref() < 0) {
-                transformed.error = negative_osm_id_message("way node reference", node.ref());
-                break;
-              }
-            }
-            if (!transformed.error.empty()) {
+            const auto invalid_node =
+                graph_parser::transform_way(way, lua, empty_way_tags, transformed.ways);
+            if (invalid_node < 0) {
+              transformed.error = negative_osm_id_message("way node reference", invalid_node);
               negative_id_seen.store(true, std::memory_order_relaxed);
               break;
             }
-            graph_parser::transform_way(way, lua, empty_way_tags, transformed.ways);
           }
           buffer_promise.second.set_value(std::move(transformed));
         }
@@ -5463,17 +5463,18 @@ void PBFGraphParser::ParseAreaWays(const boost::property_tree::ptree& pt,
       for (const auto& item : buffer) {
         const auto& osm_way = static_cast<const osmium::Way&>(item);
         check_osm_id("way", osm_way.id());
-        for (const auto& node : osm_way.nodes())
-          check_osm_id("way node reference", node.ref());
-
         // skip ways we don't care about
-        if (!needed_way_ids.count(static_cast<uint64_t>(osm_way.id())))
+        if (!needed_way_ids.count(static_cast<uint64_t>(osm_way.id()))) {
+          for (const auto& node : osm_way.nodes())
+            check_osm_id("way node reference", node.ref());
           continue;
+        }
 
         // gather the node ids of this way
         std::vector<uint64_t> nodes;
         nodes.reserve(osm_way.nodes().size());
         for (const auto& node : osm_way.nodes()) {
+          check_osm_id("way node reference", node.ref());
           nodes.push_back(node.ref());
         }
 
