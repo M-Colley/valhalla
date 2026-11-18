@@ -12,6 +12,8 @@ if (Python_FOUND)
         ${VALHALLA_SOURCE_DIR}/test/scripts/test_valhalla_build_config.py
         ${VALHALLA_SOURCE_DIR}/test/scripts/test_valhalla_build_extract.py
         ${VALHALLA_SOURCE_DIR}/test/scripts/test_valhalla_build_elevation.py
+        ${VALHALLA_SOURCE_DIR}/test/scripts/test_tz_header.py
+        ${VALHALLA_SOURCE_DIR}/cmake/ValhallaBin2Header.cmake
       VERBATIM)
   add_custom_target(run-scripts DEPENDS scripts.log)
   set_target_properties(run-scripts PROPERTIES FOLDER "Scripts")

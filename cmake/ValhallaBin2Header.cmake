@@ -42,10 +42,11 @@ endfunction()
 #                     as string. But the size variable holds size of the byte array without this
 #                     null byte.
 #   SKIP_LINES      - Number of lines to skip (max 1).
+#   STRIP_TZ_IGNORED_LINES - Remove lines ignored by the embedded tz parser.
 # Usage:
 #   bin2h(SOURCE_FILE "Logo.png" HEADER_FILE "Logo.h" VARIABLE_NAME "LOGO_PNG")
 function(BIN2H)
-    set(options APPEND NULL_TERMINATE RAW)
+    set(options APPEND NULL_TERMINATE RAW STRIP_TZ_IGNORED_LINES)
     set(oneValueArgs SOURCE_FILE VARIABLE_NAME HEADER_FILE SKIP_LINES)
     cmake_parse_arguments(BIN2H "${options}" "${oneValueArgs}" "" ${ARGN})
 
@@ -87,6 +88,17 @@ function(BIN2H)
         string(FIND "${hexString}" "0a" pos)
         math(EXPR pos "${pos}+2")
         string(SUBSTRING ${hexString} ${pos} -1 hexString)
+      endif()
+      if(BIN2H_STRIP_TZ_IGNORED_LINES)
+        # Separate bytes to anchor matches at byte boundaries. Hex input avoids
+        # CMake's text-mode CRLF conversion and preserves retained bytes.
+        string(REGEX REPLACE "([0-9a-f][0-9a-f])" "\\1;" tzBytes "${hexString}")
+        string(REGEX REPLACE "(^|0a;)23;(0[0-9b-f];|[1-9a-f][0-9a-f];)*" "\\1" tzBytes "${tzBytes}")
+        while(tzBytes MATCHES "0a;0a;")
+          string(REPLACE "0a;0a;" "0a;" tzBytes "${tzBytes}")
+        endwhile()
+        string(REGEX REPLACE "^0a;" "" tzBytes "${tzBytes}")
+        string(REPLACE ";" "" hexString "${tzBytes}")
       endif()
 
       string(LENGTH ${hexString} hexStringLength)
@@ -145,6 +157,7 @@ Options:
     --skip-line [NUM]       skip NUM lines, default 0
     --append                append to a file
     --raw                   generate raw string literals
+    --strip-tz-ignored-lines remove tz comment and empty lines
     --null                  add a null byte(zero) to the byte array")
       set(exit TRUE)
     elseif(${CURRENT_ARG} MATCHES "^--header")
@@ -157,6 +170,8 @@ Options:
       list(APPEND options "RAW")
     elseif(${CURRENT_ARG} MATCHES "^--null$")
       list(APPEND options "NULL_TERMINATE")
+    elseif(${CURRENT_ARG} MATCHES "^--strip-tz-ignored-lines$")
+      list(APPEND options "STRIP_TZ_IGNORED_LINES")
     elseif(${CURRENT_ARG} MATCHES "^--variable-name$")
       math(EXPR ARG_NUM "${ARG_NUM}+1")
       list(APPEND options "VARIABLE_NAME;${CMAKE_ARGV${ARG_NUM}}")

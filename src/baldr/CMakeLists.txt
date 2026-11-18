@@ -21,10 +21,10 @@ foreach(tz_db_file ${tz_db_files})
     COMMAND ${CMAKE_COMMAND} -DMSVC=${MSVC} -P ${VALHALLA_SOURCE_DIR}/cmake/ValhallaBin2Header.cmake
         ${VALHALLA_SOURCE_DIR}/third_party/tz/${tz_db_file}
         ${CMAKE_CURRENT_BINARY_DIR}/date_time_${tz_db_file}.h
-        --variable-name date_time_${tz_db_file} --skip 1 --raw
+        --variable-name date_time_${tz_db_file} --skip 1 --raw --strip-tz-ignored-lines
     WORKING_DIRECTORY ${VALHALLA_SOURCE_DIR}
     COMMENT "Compiling third_party/tz/${tz_db_file} to date_time_${tz_db_file}.h"
-    DEPENDS ${VALHALLA_SOURCE_DIR}/third_party/tz/${tz_db_file} ${VALHALLA_SOURCE_DIR}/third_party/tz/leapseconds)
+    DEPENDS ${VALHALLA_SOURCE_DIR}/third_party/tz/${tz_db_file} ${VALHALLA_SOURCE_DIR}/third_party/tz/leapseconds ${VALHALLA_SOURCE_DIR}/cmake/ValhallaBin2Header.cmake)
 endforeach()
 
 # Process the windowsZones.xml file
