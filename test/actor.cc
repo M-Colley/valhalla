@@ -1,10 +1,12 @@
-#include "tyr/actor.h"
+#include "baldr/rapidjson_utils.h"
 #include "test.h"
+#include "tyr/actor.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <vtzero/vector_tile.hpp>
 
 #include <functional>
+#include <optional>
 #include <string>
 
 #if !defined(VALHALLA_SOURCE_DIR)
@@ -68,6 +70,67 @@ TEST(Actor, Route) {
         {"lat":40.544232,"lon":-76.385752,"type":"break"}],"costing":"auto"})";
   std::function<void()> interrupt = [] { throw test_exception_t{}; };
   EXPECT_THROW(actor.route(request, &interrupt), test_exception_t);
+}
+
+TEST(Actor, RequestId) {
+  const struct {
+    const char* name;
+    std::string (tyr::actor_t::*action)(const std::string&, const std::function<void()>*, Api*);
+    const char* request;
+    const char* osrm_result;
+  } cases[] = {
+      {"route", &tyr::actor_t::route,
+       R"({"locations":[{"lat":40.546115,"lon":-76.385076},{"lat":40.544232,"lon":-76.385752}],"costing":"auto"})",
+       "routes"},
+      {"optimized_route", &tyr::actor_t::optimized_route,
+       R"({"locations":[{"lat":40.546115,"lon":-76.385076},{"lat":40.544232,"lon":-76.385752}],"costing":"auto"})",
+       "routes"},
+      {"trace_route", &tyr::actor_t::trace_route,
+       R"({"shape":[{"lat":40.546115,"lon":-76.385076},{"lat":40.544232,"lon":-76.385752}],"shape_match":"map_snap","costing":"auto"})",
+       "matchings"},
+      {"matrix", &tyr::actor_t::matrix,
+       R"({"sources":[{"lat":40.546115,"lon":-76.385076}],"targets":[{"lat":40.544232,"lon":-76.385752}],"costing":"auto"})",
+       "durations"},
+  };
+  const std::vector<std::optional<std::string>> ids = {std::nullopt, "",
+                                                       "batch \"one\" \\ \n \xE8\xB7\xAF"};
+  tyr::actor_t actor(conf, true);
+  for (const auto& entry : cases) {
+    for (const auto* format : {"json", "osrm"}) {
+      for (const auto& id : ids) {
+        SCOPED_TRACE(::testing::Message()
+                     << entry.name << ": " << format << ", id present=" << id.has_value());
+        rapidjson::Document request;
+        request.Parse(entry.request);
+        auto& allocator = request.GetAllocator();
+        request.AddMember("format", rapidjson::Value().SetString(format, allocator), allocator);
+        if (id) {
+          request.AddMember("id",
+                            rapidjson::Value().SetString(id->data(),
+                                                         static_cast<rapidjson::SizeType>(id->size()),
+                                                         allocator),
+                            allocator);
+        }
+
+        const auto response = (actor.*entry.action)(rapidjson::to_string(request), nullptr, nullptr);
+        rapidjson::Document result;
+        result.Parse(response);
+        ASSERT_FALSE(result.HasParseError());
+        ASSERT_TRUE(result.IsObject());
+        ASSERT_EQ(result.HasMember("id"), id.has_value());
+        if (id) {
+          ASSERT_TRUE(result["id"].IsString());
+          EXPECT_EQ(std::string(result["id"].GetString(), result["id"].GetStringLength()), *id);
+        }
+        if (std::string(format) == "osrm") {
+          ASSERT_TRUE(result.HasMember("code"));
+          ASSERT_TRUE(result["code"].IsString());
+          EXPECT_STREQ(result["code"].GetString(), "Ok");
+          EXPECT_TRUE(result.HasMember(entry.osrm_result));
+        }
+      }
+    }
+  }
 }
 
 TEST(Actor, TraceAttributes) {

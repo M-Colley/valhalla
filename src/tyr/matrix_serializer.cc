@@ -77,6 +77,10 @@ std::string serialize(const Api& request) {
   writer.start_object();
   const auto& options = request.options();
 
+  if (options.has_id_case()) {
+    writer("id", options.id());
+  }
+
   // If here then the matrix succeeded. Set status code to OK and serialize
   // waypoints (locations).
   writer("code", "Ok");
