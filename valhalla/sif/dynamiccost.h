@@ -831,13 +831,15 @@ public:
     auto restrictions = tile->GetAccessRestrictions(edgeid.id(), access_mask_);
 
     for (const auto& restr : restrictions) {
-      if (edge_destonly && restr.type() == baldr::AccessType::kDestinationAllowed &&
-          current_time != 0 && IsConditionalActive(restr.value(), current_time, tz_index)) {
+      const auto type = restr.type();
+      if (edge_destonly && type == baldr::AccessType::kDestinationAllowed && current_time != 0 &&
+          IsConditionalActive(restr.value(), current_time, tz_index)) {
         *edge_destonly = true;
       }
-      if (restr.except_destination() && !allow_destination_only_) {
-        destonly_access_restr_mask |=
-            baldr::kAccessRestrictionMasks[static_cast<size_t>(restr.type())];
+      const auto type_index = static_cast<size_t>(type);
+      if (restr.except_destination() && !allow_destination_only_ &&
+          type_index < baldr::kAccessRestrictionMasks.size()) {
+        destonly_access_restr_mask |= baldr::kAccessRestrictionMasks[type_index];
       }
     }
     return destonly_access_restr_mask;

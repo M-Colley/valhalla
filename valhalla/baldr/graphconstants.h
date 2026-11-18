@@ -761,7 +761,8 @@ enum class RestrictionType : uint8_t {
   kNoProbable = 11
 };
 
-// Access Restriction types. Maximum value supported is 31. DO NOT EXCEED.
+// New access restriction types must fit in the builder's 4-bit OSMAccessRestriction field.
+// The on-disk AccessRestriction field holds 6 bits.
 enum class AccessType : uint8_t {
   kHazmat = 0,
   kMaxHeight = 1,
