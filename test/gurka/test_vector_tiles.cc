@@ -105,6 +105,14 @@ TEST(VectorTilesBasic, TileGeneralization) {
   test_vertex_count({}, 2);
   // with very low generalize, i.e. full resolution aka no generalize
   test_vertex_count({{"/generalize", "0.01"}}, 6);
+
+  map.config.put("loki.service_defaults.mvt_cache_min_zoom", 8);
+  map.config.put("loki.service_defaults.mvt_cache_dir",
+                 VALHALLA_BUILD_DIR "test/data/gurka_vt_basic/mvt_cache");
+  const std::unordered_map<std::string, std::string> custom{{"/generalize", "0.01"}};
+  test_vertex_count(custom, 6);
+  test_vertex_count({}, 2);
+  test_vertex_count(custom, 6);
 }
 
 TEST(VectorTilesBasic, TileRendering) {

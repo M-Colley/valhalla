@@ -1,6 +1,7 @@
 ## UNRELEASED
 * **Removed**
 * **Bug Fix**
+   * FIXED: keep geometry rendered with custom generalization out of the vector tile cache.
    * FIXED: filter MVT constrained and freeflow speeds independently in both directions.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)

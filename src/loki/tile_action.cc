@@ -73,6 +73,8 @@ using box_vtzero_t = boost::geometry::model::box<vtzero::point>;
 using linestring_vtzero_t = boost::geometry::model::linestring<vtzero::point>;
 using multilinestring_vtzero_t = boost::geometry::model::multi_linestring<linestring_vtzero_t>;
 
+constexpr double kDefaultGeneralization = 4.;
+
 // approx tolerance in meters at equator
 // reflects the maximum zoom we allow for, based on tippecanoe calculations with "detail = 12" (i.e.
 // 4096 pixels/tile)
@@ -804,7 +806,11 @@ std::string loki_worker_t::render_tile(Api& request) {
   const auto x = options.tile_xyz().x();
   const auto y = options.tile_xyz().y();
   const auto tile_path = detail::mvt_local_path(z, x, y, mvt_cache_dir_);
-  bool cache_allowed = (z >= mvt_cache_min_zoom_) && !mvt_cache_dir_.empty();
+  const double generalize =
+      options.has_generalize_case() ? options.generalize() : kDefaultGeneralization;
+  // Cache paths encode XYZ but not the simplification factor.
+  const bool cache_allowed =
+      z >= mvt_cache_min_zoom_ && !mvt_cache_dir_.empty() && generalize == kDefaultGeneralization;
   bool is_cached = false;
   if (cache_allowed) {
     is_cached = std::filesystem::exists(tile_path);
@@ -835,8 +841,6 @@ std::string loki_worker_t::render_tile(Api& request) {
   sorted_ids.assign(bbox_intersection_.begin(), bbox_intersection_.end());
   std::sort(sorted_ids.begin(), sorted_ids.end(), GraphId::cache_comparator);
 
-  // we use generalize as a scaling factor to our default generalization
-  const double generalize = options.has_generalize_case() ? options.generalize() : 4.;
   // build the full layers if cache is allowed, else whatever is in the controller
   build_layers(reader, tile, bounds, sorted_ids, min_zoom_road_class_, z, generalize, controller);
 
