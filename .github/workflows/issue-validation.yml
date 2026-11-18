@@ -55,6 +55,7 @@ jobs:
             gurka_conditional_restrictions gurka_time_dependent_restrictions gurka_probable_restrictions gurka_elevation gurka_linear_feature_factors gurka_recost \
             gurka_route gurka_time_tracking gurka_use_options \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub localedef \
+            negative_osm_ids valhalla_build_tiles \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
           git diff --exit-code -- src/bindings/python/valhalla/_valhalla.pyi \
@@ -76,7 +77,7 @@ jobs:
           for test in test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
             test/graphtile test/transitdeparture test/gurka/gurka_gtfs test/multimodalbuilder \
             test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames test/gridded_data \
-            test/restriction_parser test/gurka/gurka_simple_restrictions test/thor_worker test/mapmatch \
+            test/restriction_parser test/negative_osm_ids test/gurka/gurka_simple_restrictions test/thor_worker test/mapmatch \
             test/gurka/gurka_trace_attributes test/gurka/gurka_lane_connectivity \
             test/attributes_controller test/osmnode test/gurka/gurka_vector_tiles \
             test/aabb2 test/edgeinfo test/edgestatus test/elevation_encoding test/encode test/graphreader \
@@ -100,6 +101,13 @@ jobs:
           name: issue-validation-cpp-logs
           path: validation-logs/
           retention-days: 14
+      - name: Run tile builder CLI regression
+        if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python test/negative_osm_ids_cli.py --fixture-generator build/test/negative_osm_ids \
+            --build-tiles build/valhalla_build_tiles 2>&1 | tee validation-logs/negative-osm-ids-cli.log
       - name: Run Python binding and script tests
         if: ${{ !cancelled() && steps.focused_build.outcome == 'success' }}
         shell: bash
