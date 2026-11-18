@@ -27,6 +27,8 @@ We support the usual GET & POST with the common "Slippy Map"/XYZ request pattern
 | `verbose` | If `true`, it'll enable _all_ attributes, regardless of `filters`. Default `false`. Note, that the service setting `service_limits.tile.allow_verbose` (default `false`) has to be enabled for this to take effect. |
 | `generalize` | A factor which scales the default (Douglas-Peucker) generalization, akin to tippecanoe's `simplification` argument. 1.0 returns the highest possible resolution, values > 1.0 more aggressively generalize the line features. Default is 4.0 |
 
+The tile cache stores geometry rendered with the default generalization factor. Requests for a different factor bypass the cache. Clear existing vector tile caches on upgrade if they were populated using custom factors.
+
 ### Attribute filters
 
 While we're re-using the same code as for `trace_attributes`, we don't support the full list for the tile endpoint and added some which are not implemented for `trace_attributes`. If not specified otherwise, the meaning of the attribute values is either trivial or available at https://valhalla.github.io/valhalla/api/map-matching/api-reference/#edge-items. `access` attributes are returning the numeric representation of a bit mask which needs to be decoded, see https://github.com/valhalla/valhalla/blob/c5151e19f65c3b498aa606a9cc9d6d274fba11bc/valhalla/baldr/graphconstants.h#L37-L47, e.g. a value of 1033 (`0b10000001001`) indicates `auto`, `truck` and `motorcycle` access etc.
