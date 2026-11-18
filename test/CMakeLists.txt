@@ -162,6 +162,12 @@ gtest_discover_tests(tyr_inline_tests TEST_PREFIX "TyrInline.")
 ## Test-specific data, properties and dependencies
 target_compile_definitions(logging PRIVATE LOGGING_LEVEL_ALL)
 
+if(NOT ENABLE_DATA_TOOLS)
+  # These unit tests use the builders to serialize their own fixtures.
+  target_sources(edgeinfo PRIVATE ${VALHALLA_SOURCE_DIR}/src/mjolnir/edgeinfobuilder.cc)
+  target_sources(graphtile PRIVATE ${VALHALLA_SOURCE_DIR}/src/mjolnir/complexrestrictionbuilder.cc)
+endif()
+
 # JSON config -> file so `--config <path>` survives cmd.exe (raw bracket [=[...]=] callers
 # get ${VAR} expansion via string(CONFIGURE)). Injects a top-level null logger to silence
 # tile-build chatter. Idempotent; add the returned path to DEPENDS for rebuild on JSON edit.
