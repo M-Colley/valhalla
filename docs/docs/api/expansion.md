@@ -66,7 +66,7 @@ An example request is:
 
 ## Outputs of the Expansion service
 
-In the service response, the expanded way segments are returned as [GeoJSON](https://geojson.org/) as plain `LineString`s. Due to the verbosity of the GeoJSON format, single geometry features would produce prohibitively huge responses.
+By default, the service returns the expanded way segments as [GeoJSON](https://geojson.org/) `LineString` features. For large expansions, set `"format": "pbf"` in the request to receive the compact [Protocol Buffers](protocol-buffers.md) response. Its `Api.expansion` field contains the geometries and requested properties.
 
 The output will only contain the `properties` which were specified in the `expansion_properties` request array. If the parameter was omitted in the request, the output will contain an empty `properties` object.
 
