@@ -22,20 +22,9 @@
 
 namespace valhalla::loki {
 
-class EdgesLayerBuilder;
-struct EdgeAttributeTile {
-  const char* key_name;
-  std::string_view attribute_flag;
-  vtzero::index_value EdgesLayerBuilder::*key_member;
-
-  using prop_func_t = void (*)(EdgesLayerBuilder*,
-                               vtzero::index_value valhalla::loki::EdgesLayerBuilder::*const,
-                               vtzero::linestring_feature_builder&,
-                               const baldr::DirectedEdge&,
-                               const baldr::EdgeInfo&,
-                               const volatile baldr::TrafficSpeed*);
-  prop_func_t prop_func;
-};
+// Define attribute descriptors after their builder classes: MSVC must see the complete class
+// before choosing the representation of pointers to its members.
+struct EdgeAttributeTile;
 
 class AccessRestrictionLayerBuilder : vtzero::layer_builder {
 public:
@@ -53,16 +42,6 @@ protected:
   vtzero::index_value key_modes_;
   vtzero::index_value key_except_destination_;
   vtzero::index_value key_value_;
-};
-
-class IncidentLayersBuilder;
-struct IncidentsAttributeTile {
-  const char* key_name;
-  std::string_view attribute_flag;
-  vtzero::index_value IncidentLayersBuilder::*key_member;
-
-  using value_func_t = vtzero::encoded_property_value (*)(const IncidentsTile::Metadata&);
-  value_func_t value_func;
 };
 
 class IncidentLayersBuilder : public vtzero::layer_builder {
@@ -95,6 +74,15 @@ protected:
   const baldr::AttributesController controller_;
 };
 
+struct IncidentsAttributeTile {
+  const char* key_name;
+  std::string_view attribute_flag;
+  vtzero::index_value IncidentLayersBuilder::*key_member;
+
+  using value_func_t = vtzero::encoded_property_value (*)(const IncidentsTile::Metadata&);
+  value_func_t value_func;
+};
+
 /**
  * Helper class to build the edges layer with pre-registered keys
  */
@@ -109,21 +97,10 @@ public:
                             vtzero::linestring_feature_builder& feature,
                             const baldr::DirectedEdge& edge,
                             const baldr::EdgeInfo& edge_info,
-                            const volatile baldr::TrafficSpeed* live_speed) {
-    for (const auto& def : arr) {
-      if (controller(def.attribute_flag)) {
-        def.prop_func(this, def.key_member, feature, edge, edge_info, live_speed);
-      }
-    }
-  }
+                            const volatile baldr::TrafficSpeed* live_speed);
 
   void init_attribute_keys(const std::span<const EdgeAttributeTile> arr,
-                           const baldr::AttributesController& controller) {
-    for (const auto& def : arr) {
-      if (controller(def.attribute_flag))
-        this->*(def.key_member) = add_key_without_dup_check(def.key_name);
-    }
-  }
+                           const baldr::AttributesController& controller);
 
   void add_feature(const std::vector<vtzero::point>& geometry,
                    baldr::GraphId forward_edge_id,
@@ -228,15 +205,40 @@ private:
   const baldr::AttributesController& controller_;
 };
 
-class NodesLayerBuilder;
-struct NodeAttributeTile {
+struct EdgeAttributeTile {
   const char* key_name;
   std::string_view attribute_flag;
-  vtzero::index_value NodesLayerBuilder::*key_member;
+  vtzero::index_value EdgesLayerBuilder::*key_member;
 
-  using value_func_t = vtzero::encoded_property_value (*)(const baldr::NodeInfo&);
-  value_func_t value_func;
+  using prop_func_t = void (*)(EdgesLayerBuilder*,
+                               vtzero::index_value valhalla::loki::EdgesLayerBuilder::*const,
+                               vtzero::linestring_feature_builder&,
+                               const baldr::DirectedEdge&,
+                               const baldr::EdgeInfo&,
+                               const volatile baldr::TrafficSpeed*);
+  prop_func_t prop_func;
 };
+
+inline void EdgesLayerBuilder::set_attribute_values(const std::span<const EdgeAttributeTile> arr,
+                                                    const baldr::AttributesController& controller,
+                                                    vtzero::linestring_feature_builder& feature,
+                                                    const baldr::DirectedEdge& edge,
+                                                    const baldr::EdgeInfo& edge_info,
+                                                    const volatile baldr::TrafficSpeed* live_speed) {
+  for (const auto& def : arr) {
+    if (controller(def.attribute_flag)) {
+      def.prop_func(this, def.key_member, feature, edge, edge_info, live_speed);
+    }
+  }
+}
+
+inline void EdgesLayerBuilder::init_attribute_keys(const std::span<const EdgeAttributeTile> arr,
+                                                   const baldr::AttributesController& controller) {
+  for (const auto& def : arr) {
+    if (controller(def.attribute_flag))
+      this->*(def.key_member) = add_key_without_dup_check(def.key_name);
+  }
+}
 
 /**
  * Helper class to build the nodes layer with pre-registered keys
@@ -281,6 +283,15 @@ public:
 
 private:
   const baldr::AttributesController controller_;
+};
+
+struct NodeAttributeTile {
+  const char* key_name;
+  std::string_view attribute_flag;
+  vtzero::index_value NodesLayerBuilder::*key_member;
+
+  using value_func_t = vtzero::encoded_property_value (*)(const baldr::NodeInfo&);
+  value_func_t value_func;
 };
 
 namespace detail {
