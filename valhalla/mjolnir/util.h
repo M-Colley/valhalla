@@ -147,6 +147,13 @@ struct build_stats {
     kCountShortcutsLevel1,
     kCountSimpleTurnRestrictions,
     kCountTiles,
+    // Graph enhancer totals.
+    kCountNotThruEdges,
+    kCountNodesWithoutCountry,
+    kCountInternalIntersectionEdges,
+    kCountTurnChannelEdges,
+    kCountRampEdges,
+    kCountPencilPointUturns,
     kCount // sentinel — must be last
   };
 
@@ -217,12 +224,24 @@ struct build_stats {
       {"count_shortcuts_level_1", "level 1 shortcuts", BuildStage::kShortcuts, false},
       {"count_simple_turn_restrictions", "simple turn restrictions", BuildStage::kBuild, false},
       {"count_tiles", "amount of tiles with edges/nodes in them", BuildStage::kValidate, false},
+      // Graph enhancer totals.
+      {"count_not_thru_edges", "not-through edges", BuildStage::kEnhance, false},
+      {"count_nodes_without_country", "nodes without a country", BuildStage::kEnhance, false},
+      {"count_internal_intersection_edges", "internal intersection edges", BuildStage::kEnhance,
+       false},
+      {"count_turn_channel_edges", "turn channel edges", BuildStage::kEnhance, false},
+      {"count_ramp_edges", "ramp edges", BuildStage::kEnhance, false},
+      {"count_pencil_point_uturns", "pencil-point U-turns", BuildStage::kEnhance, false},
   };
 
   static_assert(std::size(meta) == kCount, "build_stats::meta and counter enum are out of sync");
 
   void increment(counter c, uint32_t by = 1) {
     counters_[c] += by;
+  }
+
+  void set_count(counter c, uint32_t value) {
+    counters_[c].store(value);
   }
 
   uint32_t count(counter c) const {

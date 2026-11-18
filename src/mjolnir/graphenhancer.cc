@@ -1456,6 +1456,14 @@ void GraphEnhancer::Enhance(const boost::property_tree::ptree& pt,
     }
   }
 
+  auto& counters = build_stats::get();
+  counters.set_count(build_stats::kCountNotThruEdges, stats.not_thru);
+  counters.set_count(build_stats::kCountNodesWithoutCountry, stats.no_country_found);
+  counters.set_count(build_stats::kCountInternalIntersectionEdges, stats.internalcount);
+  counters.set_count(build_stats::kCountTurnChannelEdges, stats.turnchannelcount);
+  counters.set_count(build_stats::kCountRampEdges, stats.rampcount);
+  counters.set_count(build_stats::kCountPencilPointUturns, stats.pencilucount);
+
   LOG_INFO("Finished with max_density " + std::to_string(stats.max_density));
   LOG_DEBUG("not_thru = " + std::to_string(stats.not_thru));
   LOG_DEBUG("no country found = " + std::to_string(stats.no_country_found));
