@@ -185,6 +185,7 @@ nav:
       - Status: api/status.md
       - Tile: api/tile.md
   - Language bindings:
+      - C++: bindings/cpp.md
       - Python:
           - bindings/python/index.md
           - API reference:
