@@ -1,10 +1,13 @@
 #include "tyr/actor.h"
+#include "baldr/rapidjson_utils.h"
 #include "test.h"
+#include "tyr/serializers.h"
 
 #include <boost/property_tree/ptree.hpp>
 #include <vtzero/vector_tile.hpp>
 
 #include <functional>
+#include <limits>
 #include <string>
 
 #if !defined(VALHALLA_SOURCE_DIR)
@@ -58,6 +61,20 @@ TEST(Actor, Basic) {
   ASSERT_NE(status_json.find("Polygon"), std::string::npos);
 
   // TODO: test the rest of them
+}
+
+TEST(Actor, StatusSerializesUnsignedTilesetTimestamp) {
+  for (const uint32_t timestamp : {0u, 2'147'483'648u, std::numeric_limits<uint32_t>::max()}) {
+    SCOPED_TRACE(timestamp);
+    Api api;
+    api.mutable_status()->set_tileset_last_modified(timestamp);
+    rapidjson::Document response;
+    response.Parse(tyr::serializeStatus(api));
+    ASSERT_TRUE(response.IsObject());
+    ASSERT_TRUE(response.HasMember("tileset_last_modified"));
+    ASSERT_TRUE(response["tileset_last_modified"].IsUint());
+    EXPECT_EQ(response["tileset_last_modified"].GetUint(), timestamp);
+  }
 }
 
 struct test_exception_t {};
