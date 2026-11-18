@@ -191,11 +191,6 @@ constexpr float kAvoidHillsStrength[] = {
     12.0f  // 15%   - Only for the strongest!
 };
 
-// Edge speed above which extra penalties apply (to avoid roads with higher
-// speed traffic). This threshold is adjusted upwards with higher useroads
-// factors.
-constexpr uint32_t kSpeedPenaltyThreshold = 40; // 40 KPH ~ 25 MPH
-
 // How much to favor bicycle networks.
 constexpr float kBicycleNetworkFactor = 0.95f;
 
@@ -429,9 +424,8 @@ public:
   // Surface speed factors (based on road surface type).
   const float* surface_speed_factor_;
 
-  // Road speed penalty factor. Penalties apply above a threshold (based on the use_roads factor)
+  // Roadway stress factors indexed by road speed in kph.
   float speedpenalty_[kMaxSpeedKph + 1];
-  uint32_t speed_penalty_threshold_;
 
   // Elevation/grade penalty (weighting applied based on the edge's weighted
   // grade (relative value from 0-15)
@@ -529,10 +523,6 @@ BicycleCost::BicycleCost(const Costing& costing)
   path_cyclelane_factor_[1] = 0.2f + use_roads_;        // Share path with pedestrians
   path_cyclelane_factor_[2] = 0.1f + use_roads_ * 0.9f; // Segregated lane from pedestrians
   path_cyclelane_factor_[3] = use_roads_ * 0.8f;        // No pedestrians allowed on path
-
-  // Set the speed penalty threshold and factor. With useroads = 1 the
-  // threshold is 70 kph (near 50 MPH).
-  speed_penalty_threshold_ = kSpeedPenaltyThreshold + static_cast<uint32_t>(use_roads_ * 30.0f);
 
   // Create speed cost table and penalty table (to avoid division in costing)
   float avoid_roads = (1.0f - use_roads_) * 0.75f + 0.25;
