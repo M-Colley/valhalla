@@ -178,6 +178,7 @@ nav:
       - Optimized: api/optimized.md
       - Matrix: api/matrix.md
       - Isochrone: api/isochrone.md
+      - Centroid: api/centroid.md
       - Map matching: api/map-matching.md
       - Locate: api/locate.md
       - Elevation: api/elevation.md

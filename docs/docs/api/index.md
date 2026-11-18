@@ -18,4 +18,4 @@ The **locate** service allows you to get detailed metadata about the nodes and e
 
 The **status** service is a simple service that returns information about the running server or valhalla instance. See the [api documentation](./status.md).
 
-The **centroid** service allows you to find the least cost convergence point of routes from multiple locations. Documentation coming soonish.
+The **centroid** service finds a shared meeting point on the routing network and returns a route from each origin. See the [beta API documentation](./centroid.md).
