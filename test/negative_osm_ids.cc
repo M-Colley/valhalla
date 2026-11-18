@@ -73,6 +73,16 @@ TEST(NegativeOSMIds, RejectWayIdAndNodeReferenceFromWorkers) {
   }
 }
 
+TEST(NegativeOSMIds, RejectReferenceInOtherwiseIgnoredWay) {
+  ParserFiles files;
+  osmium::memory::Buffer buffer(1024, osmium::memory::Buffer::auto_grow::yes);
+  const std::vector<osmium::object_id_type> refs = {-2};
+  osmium::builder::add_way(buffer, osmium::builder::attr::_id(1), osmium::builder::attr::_version(1),
+                           osmium::builder::attr::_nodes(refs));
+  files.write(std::move(buffer));
+  expect_negative([&] { files.ways(); }, "way node reference ID -2");
+}
+
 TEST(NegativeOSMIds, DrainWorkerQueuesAfterInvalidReference) {
   ParserFiles files;
   osmium::io::Writer writer(files.pbf, osmium::io::overwrite::allow);
@@ -113,8 +123,9 @@ TEST(NegativeOSMIds, PositiveWideWayAndReferences) {
 }
 
 TEST(NegativeOSMIds, RejectAreaWayIdAndNodeReference) {
-  for (bool bad_way : {true, false}) {
-    SCOPED_TRACE(bad_way);
+  for (int scenario : {0, 1, 2}) {
+    SCOPED_TRACE(scenario);
+    const bool bad_way = scenario == 0;
     ParserFiles files;
     osmium::memory::Buffer buffer(1024, osmium::memory::Buffer::auto_grow::yes);
     const std::vector<osmium::object_id_type> refs = {1, bad_way ? 2 : -2};
@@ -125,7 +136,7 @@ TEST(NegativeOSMIds, RejectAreaWayIdAndNodeReference) {
     { sequence<OSMWayNode> nodes(files.path("way_nodes.bin"), true); }
     OSMData data{};
     data.initialized = true;
-    data.area_relations.emplace(1, OSMAreaMember{1, true});
+    data.area_relations.emplace(1, OSMAreaMember{scenario == 2 ? 2u : 1u, true});
     expect_negative(
         [&] {
           PBFGraphParser::ParseAreaWays(files.config, {files.pbf}, files.path("ways.bin"),
@@ -133,6 +144,30 @@ TEST(NegativeOSMIds, RejectAreaWayIdAndNodeReference) {
         },
         bad_way ? "way ID -1" : "way node reference ID -2");
   }
+}
+
+TEST(NegativeOSMIds, PositiveWideAreaWayAndReferences) {
+  ParserFiles files;
+  constexpr osmium::object_id_type wide = osmium::object_id_type{1} << 33;
+  osmium::memory::Buffer buffer(1024, osmium::memory::Buffer::auto_grow::yes);
+  const std::vector<osmium::object_id_type> refs = {wide + 1, wide + 2};
+  osmium::builder::add_way(buffer, osmium::builder::attr::_id(wide),
+                           osmium::builder::attr::_version(1), osmium::builder::attr::_nodes(refs));
+  files.write(std::move(buffer));
+  { sequence<OSMWay> ways(files.path("ways.bin"), true); }
+  { sequence<OSMWayNode> nodes(files.path("way_nodes.bin"), true); }
+  OSMData data{};
+  data.initialized = true;
+  data.area_relations.emplace(1, OSMAreaMember{static_cast<uint64_t>(wide), true});
+  PBFGraphParser::ParseAreaWays(files.config, {files.pbf}, files.path("ways.bin"),
+                                files.path("way_nodes.bin"), data);
+  sequence<OSMWay> ways(files.path("ways.bin"), false);
+  sequence<OSMWayNode> nodes(files.path("way_nodes.bin"), false);
+  ASSERT_EQ(ways.size(), 1);
+  ASSERT_EQ(nodes.size(), 2);
+  EXPECT_EQ((*ways[0]).way_id(), static_cast<uint64_t>(wide));
+  EXPECT_EQ((*nodes[0]).node.osmid_, static_cast<uint64_t>(wide + 1));
+  EXPECT_EQ((*nodes[1]).node.osmid_, static_cast<uint64_t>(wide + 2));
 }
 
 TEST(NegativeOSMIds, RejectRelationIdAndMember) {
