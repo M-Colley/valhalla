@@ -205,7 +205,7 @@ linestring_vtzero_t shape_to_mercator(const std::vector<midgard::PointLL>& shape
     const auto y = mvt_coords.y;
 
     // only in this case we need an intersection with the clip_box
-    line_leaves_bbox = x < min_x || x > max_x || y < min_y || y > max_y;
+    line_leaves_bbox |= x < min_x || x > max_x || y < min_y || y > max_y;
 
     unclipped_mvt_line.emplace_back(x, y);
     last_pt = mvt_coords;
