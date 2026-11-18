@@ -8,18 +8,6 @@ using namespace valhalla::baldr;
 
 namespace {
 
-auto get_graphtile(const std::shared_ptr<GraphReader>& reader) {
-  graph_tile_ptr tile = nullptr;
-  for (const auto& tile_id : reader->GetTileSet()) {
-    tile = reader->GetGraphTile(tile_id);
-    if (tile->id().level() < TileHierarchy::GetTransitLevel().level &&
-        tile->header()->nodecount() > 0) {
-      break;
-    }
-  }
-  return tile;
-}
-
 time_t get_tileset_last_modified(const std::shared_ptr<GraphReader>& reader) {
   auto path = reader->GetTileSetLocation();
   try {
@@ -55,8 +43,33 @@ void loki_worker_t::status(Api& request) const {
   if (!request.options().verbose() || !allow_status_verbose)
     return;
 
-  // get _some_ tile
-  const static baldr::graph_tile_ptr tile = get_graphtile(reader);
+  // Keep the first sample for this worker without retaining a tile reference.
+  if (!tileset_status_) {
+    TilesetStatus sampled;
+    const auto transit_level = TileHierarchy::GetTransitLevel().level;
+    graph_tile_ptr sample_tile;
+    bool found_road_tile = false;
+    for (const auto& tile_id : reader->GetTileSet()) {
+      if (tile_id.level() == transit_level)
+        sampled.has_transit_tiles = true;
+      if (!found_road_tile) {
+        if (auto tile = reader->GetGraphTile(tile_id)) {
+          found_road_tile = tile_id.level() < transit_level && tile->header()->nodecount() > 0;
+          sample_tile = std::move(tile);
+        }
+      }
+      if (found_road_tile && (connectivity_map || sampled.has_transit_tiles))
+        break;
+    }
+    if (sample_tile) {
+      sampled.has_tiles = true;
+      sampled.has_admins = sample_tile->header()->admincount() > 0;
+      sampled.has_timezones =
+          sample_tile->header()->nodecount() > 0 && sample_tile->node(0)->timezone() > 0;
+      sampled.osm_changeset = sample_tile->header()->dataset_id();
+    }
+    tileset_status_ = sampled;
+  }
 
   if (connectivity_map) {
     status->set_bbox(connectivity_map->to_geojson(2));
@@ -64,15 +77,14 @@ void loki_worker_t::status(Api& request) const {
         connectivity_map->level_color_exists(TileHierarchy::GetTransitLevel().level);
     status->set_has_transit_tiles(has_transit_tiles);
   } else {
-    const static bool has_transit_tiles = !reader->GetTileSet(3).empty();
-    status->set_has_transit_tiles(has_transit_tiles);
+    status->set_has_transit_tiles(tileset_status_->has_transit_tiles);
   }
 
-  status->set_has_tiles(static_cast<bool>(tile));
-  status->set_has_admins(tile && tile->header()->admincount() > 0);
-  status->set_has_timezones(tile && tile->node(0)->timezone() > 0);
+  status->set_has_tiles(tileset_status_->has_tiles);
+  status->set_has_admins(tileset_status_->has_admins);
+  status->set_has_timezones(tileset_status_->has_timezones);
   status->set_has_live_traffic(reader->HasLiveTraffic());
-  status->set_osm_changeset(tile ? tile->header()->dataset_id() : 0);
+  status->set_osm_changeset(tileset_status_->osm_changeset);
 }
 } // namespace loki
 } // namespace valhalla
