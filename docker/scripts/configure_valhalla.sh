@@ -13,7 +13,7 @@ set -o errexit -o pipefail -o nounset
 #     - use_tiles_ignore_pbf is false and new file constellations exist
 #   - downloads pbfs if there are none in the folder
 
-if ! test -f "${HASH_FILE}"; then
+if [[ "${FS_READONLY}" == "False" ]] && ! test -f "${HASH_FILE}"; then
   touch ${HASH_FILE}
 fi
 
@@ -34,6 +34,10 @@ if [[ "${build_elevation}" == "True" ]] || [[ "${build_elevation}" == "Force" ]]
 fi
 # if there's no transit tiles yet, but it should build transit, then do that; or force and remove
 if [[ "${build_transit}" == "Force" ]] || (! [[ -d ${TRANSIT_DIR} ]] && [[ "${build_transit}" == "True" ]]) || ([[ $(find ${TRANSIT_DIR} -maxdepth 1 -type d | wc -l) -eq 1 ]] && [[ "${build_transit}" == "True" ]]); then
+  if [[ "${FS_READONLY}" == "True" ]]; then
+    echo "ERROR: Cannot build transit data on read-only ${CUSTOM_FILES}." >&2
+    exit 1
+  fi
   do_transit="True"
   if [[ -d ${TRANSIT_DIR} ]]; then
     rm -r ${TRANSIT_DIR}
@@ -91,11 +95,18 @@ elif [[ "${use_tiles_ignore_pbf}" == "True" ]]; then
 elif [[ "${new_hashes}" == "True" ]]; then
   # build if there are new/other PBF files
   echo "WARNING: New PBF files were detected, starting new build"
-  echo "WARNING: Hashes $(cat ${HASH_FILE})"
+  if test -f "${HASH_FILE}"; then
+    echo "WARNING: Hashes $(cat "${HASH_FILE}")"
+  fi
   do_build="True"
 else
   # files exist and no reason to rebuild
   echo "INFO: Routing tiles exist and no need to rebuild."
+fi
+
+if [[ "${FS_READONLY}" == "True" && "${do_build}" == "True" ]]; then
+  echo "ERROR: Cannot build tiles or supporting databases on read-only ${CUSTOM_FILES}." >&2
+  exit 1
 fi
 
 # if no PBFs were found try downloading some
@@ -117,23 +128,29 @@ files=$(echo $files | xargs)
 # be careful how to write the config (mostly for restart scenarios where env vars are true all of a sudden)
 if test -f "${CONFIG_FILE}"; then
 
-  if [[ "${update_existing_config}" == "True" ]]; then
+  if [[ "${update_existing_config}" == "True" && "${FS_READONLY}" == "False" ]]; then
     echo "INFO: Found existing valhalla.json. Updating possibly missing entries."
 
     # overwrite config file
     valhalla_build_config --output "$CONFIG_FILE" --merge-config "$CONFIG_FILE" --report
   fi
 
-  jq --arg d "${TILE_DIR}" '.mjolnir.tile_dir = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${TILE_TAR}" '.mjolnir.tile_extract = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${ADMIN_DB}" '.mjolnir.admin = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${TIMEZONE_DB}" '.mjolnir.timezone = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${ELEVATION_PATH}" '.additional_data.elevation = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${GTFS_DIR}" '.mjolnir.transit_feeds_dir = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${TRANSIT_DIR}" '.mjolnir.transit_dir = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${TRAFFIC_TAR}" '.mjolnir.traffic_extract = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
-  jq --arg d "${server_threads}" '.mjolnir.concurrency = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+  if [[ "${FS_READONLY}" == "False" ]]; then
+    jq --arg d "${TILE_DIR}" '.mjolnir.tile_dir = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${TILE_TAR}" '.mjolnir.tile_extract = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${ADMIN_DB}" '.mjolnir.admin = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${TIMEZONE_DB}" '.mjolnir.timezone = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${ELEVATION_PATH}" '.additional_data.elevation = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${GTFS_DIR}" '.mjolnir.transit_feeds_dir = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${TRANSIT_DIR}" '.mjolnir.transit_dir = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${TRAFFIC_TAR}" '.mjolnir.traffic_extract = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+    jq --arg d "${server_threads}" '.mjolnir.concurrency = $d' "${CONFIG_FILE}"| sponge "${CONFIG_FILE}"
+  fi
 else
+  if [[ "${FS_READONLY}" == "True" ]]; then
+    echo "ERROR: A preconfigured valhalla.json is required on read-only ${CUSTOM_FILES}." >&2
+    exit 1
+  fi
   additional_data_elevation="--additional-data-elevation $ELEVATION_PATH"
   mjolnir_admin="--mjolnir-admin ${ADMIN_DB}"
   mjolnir_timezone="--mjolnir-timezone ${TIMEZONE_DB}"
@@ -212,7 +229,7 @@ fi
 # Use OSMSpeeds default_speeds
 
 updated_default_speed_config=False
-if [[ $use_default_speeds_config == "True" ]]; then
+if [[ "${use_default_speeds_config}" == "True" && "${FS_READONLY}" == "False" ]]; then
   if ! test -f "${DEFAULT_SPEEDS_CONFIG}"; then
     echo ""
     echo "======================================"

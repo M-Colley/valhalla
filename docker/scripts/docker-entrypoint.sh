@@ -13,6 +13,10 @@ echo ""
 do_build_tar() {
   local build_tar_local=$1
   if ([[ "${build_tar_local}" == "True" && ! -f $TILE_TAR ]]) || [[ "${build_tar_local}" == "Force" ]]; then
+    if [[ "${FS_READONLY}" == "True" ]]; then
+      echo "ERROR: Cannot build a tile archive on read-only ${CUSTOM_FILES}." >&2
+      return 1
+    fi
     options="-c ${CONFIG_FILE} -v"
     if ! [[ -z ${traffic_name} ]]; then
       options="${options} -t"
@@ -35,14 +39,20 @@ if [[ $1 == "build_tiles" ]]; then
   /valhalla/scripts/configure_valhalla.sh ${CONFIG_FILE} ${CUSTOM_FILES} ${TILE_DIR} ${TILE_TAR} || exit 1
   # tar tiles unless not wanted
   if [[ "$build_tar" == "True" ]] || [[ "$build_tar" == "Force" ]]; then
-    do_build_tar "$build_tar"
+    if [[ "${FS_READONLY}" == "True" && "$build_tar" == "True" && "${serve_tiles}" == "True" && ! -f "$TILE_TAR" ]]; then
+      echo "WARNING: Skipping archive creation on read-only ${CUSTOM_FILES}."
+    else
+      do_build_tar "$build_tar"
+    fi
   else
     echo "WARNING: Skipping tar building. Expect degraded performance while using Valhalla."
   fi
 
   # set 775/664 permissions on all created files
-  find "${CUSTOM_FILES}" -type d -exec chmod 775 {} \;
-  find "${CUSTOM_FILES}" -type f -exec chmod 664 {} \;
+  if [[ "${FS_READONLY}" == "False" ]]; then
+    find "${CUSTOM_FILES}" -type d -exec chmod 775 {} \;
+    find "${CUSTOM_FILES}" -type f -exec chmod 664 {} \;
+  fi
 
   if [[ ${serve_tiles} == "True" ]]; then
     if test -f ${CONFIG_FILE}; then
