@@ -88,6 +88,7 @@
    * FIXED: return Python actor Protobuf and GeoTIFF responses as bytes without UTF-8 decoding.
    * FIXED: echo supplied request IDs in OSRM route, optimized route, map matching and matrix responses.
    * FIXED: Reject negative OSM IDs with a renumbering diagnostic during tile building.
+   * FIXED: Keep verbose status tile metadata scoped to the actor's tileset.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
    * FIXED: area relations can share ways [#6392](https://github.com/valhalla/valhalla/pull/6392)

@@ -62,6 +62,21 @@ TEST(Actor, Basic) {
   // TODO: test the rest of them
 }
 
+TEST(Actor, VerboseStatusUsesItsOwnTileset) {
+  auto loaded_config = conf;
+  loaded_config.put("loki.use_connectivity", false);
+  auto empty_config = loaded_config;
+  empty_config.put("mjolnir.tile_dir", "");
+  empty_config.put("mjolnir.tile_extract", "");
+  tyr::actor_t loaded(loaded_config, true);
+  tyr::actor_t empty(empty_config, true);
+
+  const auto verbose = R"({"verbose":true})";
+  EXPECT_TRUE(test::json_to_pt(loaded.status(verbose)).get<bool>("has_tiles"));
+  EXPECT_FALSE(test::json_to_pt(empty.status(verbose)).get<bool>("has_tiles"));
+  EXPECT_TRUE(test::json_to_pt(loaded.status(verbose)).get<bool>("has_tiles"));
+}
+
 struct test_exception_t {};
 
 TEST(Actor, Route) {

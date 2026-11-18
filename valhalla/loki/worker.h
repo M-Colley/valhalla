@@ -15,6 +15,7 @@
 #include <boost/property_tree/ptree.hpp>
 
 #include <array>
+#include <optional>
 #include <vector>
 
 namespace valhalla {
@@ -128,6 +129,16 @@ protected:
   uint32_t mvt_cache_min_zoom_;
 
 private:
+  struct TilesetStatus {
+    uint64_t osm_changeset = 0;
+    bool has_tiles = false;
+    bool has_admins = false;
+    bool has_timezones = false;
+    bool has_transit_tiles = false;
+  };
+
+  mutable std::optional<TilesetStatus> tileset_status_;
+
   std::string service_name() const override {
     return "loki";
   }
