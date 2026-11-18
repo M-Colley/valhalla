@@ -95,6 +95,28 @@ def merge_json(
     return result
 
 
+LEGACY_THOR_LABEL_SETTINGS = {
+    "unidirectional_astar": "max_reserved_labels_count_astar",
+    "bidirectional_astar": "max_reserved_labels_count_bidir_astar",
+    "dijkstras": "max_reserved_labels_count_dijkstras",
+    "costmatrix": "max_reserved_labels_count_bidir_dijkstras",
+}
+
+
+def preserve_legacy_thor_label_limits(existing_config: Any, defaults: dict):
+    if not isinstance(existing_config, dict):
+        return
+    thor = existing_config.get("thor")
+    if not isinstance(thor, dict):
+        return
+
+    # The merge keeps existing nested values. Use legacy values as defaults for
+    # the new keys so merging cannot silently replace an operator's limits.
+    for algorithm, legacy_key in LEGACY_THOR_LABEL_SETTINGS.items():
+        if legacy_key in thor:
+            defaults["thor"][algorithm]["max_reserved_labels_count"] = thor[legacy_key]
+
+
 def strtobool(value):
     lower = str(value).lower()
     if lower in {"y", "yes", "t", "true", "on", "1"}:
@@ -223,13 +245,10 @@ config = {
     "thor": {
         "source_to_target_algorithm": "select_optimal",
         "service": {"proxy": ipc_endpoint("/tmp/thor", 8004)},
-        "max_reserved_labels_count_astar": 2000000,
-        "max_reserved_labels_count_bidir_astar": 1000000,
-        "max_reserved_labels_count_dijkstras": 4000000,
-        "max_reserved_labels_count_bidir_dijkstras": 2000000,
         "clear_reserved_memory": False,
         "extended_search": False,
         "costmatrix": {
+            "max_reserved_labels_count": 2000000,
             "check_reverse_connection": True,
             "allow_second_pass": False,
             "max_reserved_locations": 25,
@@ -245,6 +264,7 @@ config = {
             },
         },
         "bidirectional_astar": {
+            "max_reserved_labels_count": 1000000,
             "threshold_delta": 420.0,
             "alternative_cost_extend": 1.2,
             "alternative_iterations_delta": 100000,
@@ -257,6 +277,7 @@ config = {
             },
         },
         "unidirectional_astar": {
+            "max_reserved_labels_count": 2000000,
             "hierarchy_limits": {
                 "max_up_transitions": {
                     "1": 400,
@@ -265,6 +286,7 @@ config = {
                 "expand_within_distance": {"0": 1e8, "1": 100000, "2": 5000},
             }
         },
+        "dijkstras": {"max_reserved_labels_count": 4000000},
     },
     "odin": {
         "service": {"proxy": ipc_endpoint("/tmp/odin", 8005)},
@@ -552,13 +574,10 @@ help_text = {
     "thor": {
         "source_to_target_algorithm": 'Which matrix algorithm should be used, one of "timedistancematrix" or "costmatrix". If blank, the optimal will be selected.',
         "service": {"proxy": "IPC linux domain socket file location"},
-        "max_reserved_labels_count_astar": "Maximum capacity allowed to keep reserved for unidirectional A*.",
-        "max_reserved_labels_count_bidir_astar": "Maximum capacity allowed to keep reserved for bidirectional A*.",
-        "max_reserved_labels_count_dijkstras": "Maximum capacity allowed to keep reserved for unidirectional Dijkstras.",
-        "max_reserved_labels_count_bidir_dijkstras": "Maximum capacity allowed to keep reserved for bidirectional Dijkstras.",
         "clear_reserved_memory": "If True clean reserved memory in path algorithms",
         "extended_search": "If True and 1 side of the bidirectional search is exhausted, causes the other side to continue if the starting location of that side began on a not_thru or closed edge",
         "costmatrix": {
+            "max_reserved_labels_count": "Maximum number of edge labels to keep reserved for CostMatrix.",
             "check_reverse_connection": "Whether to check for expansion connections on the reverse tree, which has an adverse effect on performance",
             "allow_second_pass": 'Whether to allow a second pass for unfound CostMatrix connections, where we turn off destination-only, relax hierarchies and expand into "semi-islands"',
             "max_reserved_locations": "Maximum amount of locations allowed to to keep reserved between requests for CostMatrix",
@@ -578,6 +597,7 @@ help_text = {
             },
         },
         "bidirectional_astar": {
+            "max_reserved_labels_count": "Maximum number of edge labels to keep reserved for bidirectional A*.",
             "threshold_delta": "Time (seconds) to extend search once the first connection has been found",
             "alternative_cost_extend": "Relative cost extension to find alternative routes",
             "alternative_iterations_delta": "Number of extra iterations to allow when searching for alternative paths. Higher values will find more alternatives but will be slower",
@@ -594,6 +614,7 @@ help_text = {
             },
         },
         "unidirectional_astar": {
+            "max_reserved_labels_count": "Maximum number of edge labels to keep reserved for unidirectional A* and its multimodal variants.",
             "hierarchy_limits": {
                 "max_up_transitions": {
                     "1": "The default maximum up transitions for level 1 in CostMatrix",
@@ -605,6 +626,9 @@ help_text = {
                     "2": "The default distance within which expansion is allowed from the origin/destination on level 2 in bidirectional astar",
                 },
             }
+        },
+        "dijkstras": {
+            "max_reserved_labels_count": "Maximum number of edge labels to keep reserved for Dijkstra searches, including isochrones and time-distance matrices.",
         },
     },
     "odin": {
@@ -859,11 +883,15 @@ def add_leaf_args(
         else:
             t = type(tree)
 
-        arg = "--" + path.replace("_", "-").replace("\0", "-")
+        args = ["--" + path.replace("_", "-").replace("\0", "-")]
+        if len(keys) == 3 and keys[0] == "thor" and keys[2] == "max_reserved_labels_count":
+            legacy_key = LEGACY_THOR_LABEL_SETTINGS.get(keys[1])
+            if legacy_key:
+                args.append("--thor-" + legacy_key.replace("_", "-"))
         if t is list:
-            parser_.add_argument(arg, nargs="+", help=h, default=tree)
+            parser_.add_argument(*args, nargs="+", help=h, default=tree)
         else:
-            parser_.add_argument(arg, type=t, help=h, default=tree)
+            parser_.add_argument(*args, type=t, help=h, default=tree)
         leaves_.append(path)
 
 
@@ -940,6 +968,7 @@ def main():
 
         report = MergeReport()
         # args.remove_old is None if not specified, [] if specified without args, or a list of keys
+        preserve_legacy_thor_label_limits(existing_config, config)
         output_config = merge_json(existing_config, config, report, args.remove_old)
 
     if args.report:

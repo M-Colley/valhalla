@@ -16,8 +16,9 @@ constexpr uint32_t kMaxIterationsWithoutConvergence = 200000;
 
 // Default constructor
 MultimodalAStar::MultimodalAStar(const boost::property_tree::ptree& config)
-    : PathAlgorithm(config.get<uint32_t>("max_reserved_labels_count_astar",
-                                         kInitialEdgeLabelCountAstar),
+    : PathAlgorithm(config.get<uint32_t>("unidirectional_astar.max_reserved_labels_count",
+                                         config.get<uint32_t>("max_reserved_labels_count_astar",
+                                                              kInitialEdgeLabelCountAstar)),
                     config.get<bool>("clear_reserved_memory", false)) {
   mode_ = travel_mode_t::kDrive;
 }

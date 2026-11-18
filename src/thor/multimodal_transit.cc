@@ -13,8 +13,9 @@ namespace thor {
 
 // Default constructor
 MultiModalPathAlgorithm::MultiModalPathAlgorithm(const boost::property_tree::ptree& config)
-    : PathAlgorithm(config.get<uint32_t>("max_reserved_labels_count_astar",
-                                         kInitialEdgeLabelCountAstar),
+    : PathAlgorithm(config.get<uint32_t>("unidirectional_astar.max_reserved_labels_count",
+                                         config.get<uint32_t>("max_reserved_labels_count_astar",
+                                                              kInitialEdgeLabelCountAstar)),
                     config.get<bool>("clear_reserved_memory", false)),
       max_walking_dist_(0), mode_(travel_mode_t::kPedestrian), travel_type_(0) {
 }
