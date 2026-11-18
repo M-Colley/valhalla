@@ -95,9 +95,10 @@ int main(int argc, char** argv) {
   }
 
   // Build some tiles!
-  if (build_tile_set(config, input_files, start_stage, end_stage)) {
-    return EXIT_SUCCESS;
-  } else {
+  try {
+    return build_tile_set(config, input_files, start_stage, end_stage) ? EXIT_SUCCESS : EXIT_FAILURE;
+  } catch (const std::exception& e) {
+    std::cerr << "Tile building failed: " << e.what() << '\n';
     return EXIT_FAILURE;
   }
 }
