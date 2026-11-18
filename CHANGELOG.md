@@ -1,5 +1,7 @@
 ## UNRELEASED
 * **Removed**
+* **Added**
+   * Allow tests and the optional test library to use an installed GoogleTest and GoogleMock package.
 * **Bug Fix**
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
