@@ -1,6 +1,7 @@
 #include "baldr/graphconstants.h"
 #include "midgard/logging.h"
 #include "midgard/polyline2.h"
+#include "midgard/util.h"
 #include "thor/pathalgorithm.h"
 #include "thor/worker.h"
 #include "tyr/serializers.h"
@@ -175,18 +176,31 @@ std::string thor_worker_t::expansion(Api& request) {
         }
       };
 
+  PathAlgorithm* const path_algorithms[] = {
+      &multi_modal_transit, &timedep_forward, &timedep_reverse, &bidir_astar, &multimodal_astar,
+  };
+  MatrixAlgorithm* const matrix_algorithms[] = {
+      &costmatrix_,
+      &time_distance_matrix_,
+      &time_distance_bss_matrix_,
+  };
+  // The callbacks capture request-local state.
+  auto reset_callbacks = make_finally([&]() {
+    for (auto* alg : path_algorithms) {
+      alg->set_track_expansion(nullptr);
+    }
+    for (auto* alg : matrix_algorithms) {
+      alg->set_track_expansion(nullptr);
+    }
+    isochrone_gen.SetInnerExpansionCallback(nullptr);
+    isochrone_gen.set_track_expansion(nullptr);
+  });
+
   // tell all the algorithms how to track expansion
-  for (auto* alg : std::vector<PathAlgorithm*>{
-           &multi_modal_transit,
-           &timedep_forward,
-           &timedep_reverse,
-           &bidir_astar,
-           &multimodal_astar,
-       }) {
+  for (auto* alg : path_algorithms) {
     alg->set_track_expansion(track_expansion);
   }
-  for (auto* alg : std::vector<MatrixAlgorithm*>{&costmatrix_, &time_distance_matrix_,
-                                                 &time_distance_bss_matrix_}) {
+  for (auto* alg : matrix_algorithms) {
     alg->set_track_expansion(track_expansion);
   }
   isochrone_gen.SetInnerExpansionCallback(track_expansion);
@@ -214,14 +228,6 @@ std::string thor_worker_t::expansion(Api& request) {
                              e.second.expansion_index);
     }
   }
-
-  // tell all the algorithms to stop tracking the expansion
-  for (auto* alg : std::vector<PathAlgorithm*>{&multi_modal_transit, &timedep_forward,
-                                               &timedep_reverse, &bidir_astar, &multimodal_astar}) {
-    alg->set_track_expansion(nullptr);
-  }
-  costmatrix_.set_track_expansion(nullptr);
-  isochrone_gen.SetInnerExpansionCallback(nullptr);
 
   // serialize it
   return tyr::serializeExpansion(request, algo);
