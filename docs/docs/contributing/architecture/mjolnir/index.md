@@ -80,8 +80,24 @@ If you want to add elevation information to your route tiles you can do so using
 
 ### Transit Data
 
-If you want to add transit data to your route tiles you can follow these steps:
+To add transit data, build Valhalla with `ENABLE_DATA_TOOLS` enabled and prepare an OSM extract covering the transit region. Download the GTFS feeds separately and extract each feed into its own subdirectory of `mjolnir.transit_feeds_dir`.
 
-1. Use `valhalla_build_transit` to create an initial set of transit tiles for your region.
-2. Configure `valhalla.json` using `valhalla_build_config` and the `--mjolnir-transit-dir` argument.
-3. The next time you run `valhalla_build_tiles`, transit graph will be connected to the route graph.
+Generate a configuration with separate directories for the feeds, intermediate transit tiles and routing tiles. Point it at the timezone database from the Timezone section above:
+
+```bash
+valhalla_build_config \
+  --mjolnir-transit-feeds-dir /data/valhalla/transit_feeds \
+  --mjolnir-transit-dir /data/valhalla/transit \
+  --mjolnir-timezone /data/valhalla/tz_world.sqlite \
+  --mjolnir-tile-dir /data/valhalla/tiles > valhalla.json
+```
+
+Then run the data tools with the same configuration:
+
+```bash
+valhalla_ingest_transit --config valhalla.json
+valhalla_convert_transit --config valhalla.json
+valhalla_build_tiles --config valhalla.json /data/osm_data/your_osm_extract.pbf
+```
+
+Ingestion reads the extracted feeds and writes intermediate transit protobuf tiles to `mjolnir.transit_dir`. **It removes that directory and its contents if it is nonempty**, so use a dedicated directory. Conversion creates transit graph tiles there. The transit stage of `valhalla_build_tiles` copies and connects them to the road graph where matching local tiles exist.
