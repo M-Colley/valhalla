@@ -18,7 +18,10 @@ def dict_or_str(func):
 
         if isinstance(args[1], dict):
             response = func(args[0], json.dumps(args[1]))
-            return response if isinstance(response, bytes) else json.loads(response)
+            # Native GPX starts with an XML declaration; other text responses are JSON.
+            if isinstance(response, bytes) or response.startswith("<?xml"):
+                return response
+            return json.loads(response)
         elif not isinstance(args[1], str):
             raise ValueError("Request must be either of type str or dict")
         return func(*args)
@@ -34,6 +37,7 @@ class Actor(_Actor):
 
     JSON responses follow the input type: dict requests return dict responses and string
     requests return strings. Protobuf and GeoTIFF responses return bytes for either input type.
+    GPX responses return XML strings for either input type.
 
     Configuration passed in either by an existing configuration JSON file path or in `dict` form,
     e.g. by calling valhalla.config.get_config(). In the latter case a temp file will be

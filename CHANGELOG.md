@@ -3,6 +3,7 @@
 * **Added**
    * Add `sources_to_targets` as an alias for the C++ and Python `matrix` methods.
 * **Bug Fix**
+   * FIXED: return GPX XML strings for dictionary requests in the Python actor.
    * FIXED: return Python actor Protobuf and GeoTIFF responses as bytes without UTF-8 decoding.
    * FIXED: Fix flatbush find_path [#6385](https://github.com/valhalla/valhalla/pull/6385)
    * FIXED: Use correct dimension in `GriddedData::MinExtent()` [#6284](https://github.com/valhalla/valhalla/pull/6284)
