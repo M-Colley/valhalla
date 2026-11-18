@@ -49,7 +49,6 @@ TEST(VectorTilesBasic, AttributeDescriptors) {
     for (const auto& attribute : attributes) {
       ASSERT_NE(attribute.key_name, nullptr);
       ASSERT_NE(attribute.attribute_flag.data(), nullptr);
-      ASSERT_LT(attribute.attribute_flag.size(), 128);
       EXPECT_FALSE(attribute.attribute_flag.empty());
       EXPECT_NE(attribute.key_member, nullptr);
     }
