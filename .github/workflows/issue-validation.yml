@@ -1,6 +1,7 @@
 name: issue integration validation
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - codex/validate-issues-20261114
@@ -10,6 +11,7 @@ permissions:
 
 jobs:
   validate:
+    if: github.ref == 'refs/heads/codex/validate-issues-20261114'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     steps:
@@ -55,7 +57,7 @@ jobs:
             gurka_conditional_restrictions gurka_time_dependent_restrictions gurka_probable_restrictions gurka_elevation gurka_linear_feature_factors gurka_recost \
             gurka_route gurka_time_tracking gurka_use_options \
             gurka_oneways_foot_bike gurka_oneways gurka_indoor _valhalla_stub localedef \
-            negative_osm_ids valhalla_build_tiles \
+            negative_osm_ids valhalla_build_tiles cost_inline_tests tyr_inline_tests \
             2>&1 | tee validation-logs/build.log
           cp src/bindings/python/valhalla/_valhalla.pyi validation-logs/generated-_valhalla.pyi
           git diff --exit-code -- src/bindings/python/valhalla/_valhalla.pyi \
@@ -74,7 +76,8 @@ jobs:
           cd build
           set +e
           status=0
-          for test in test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
+          for test in test/cost_inline_tests test/tyr_inline_tests \
+            test/lua test/maneuversbuilder test/actor test/factory test/map_matcher_factory \
             test/graphtile test/transitdeparture test/gurka/gurka_gtfs test/multimodalbuilder \
             test/openlr test/gurka/gurka_locate test/predictedspeeds test/uniquenames test/gridded_data \
             test/restriction_parser test/negative_osm_ids test/gurka/gurka_simple_restrictions test/thor_worker test/mapmatch \
