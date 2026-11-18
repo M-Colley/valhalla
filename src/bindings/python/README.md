@@ -96,6 +96,9 @@ build with GeoTIFF support and is available for isochrones. JSON responses retai
 the request's type: dictionary requests return dictionaries and string requests
 return JSON strings.
 
+GPX (`"format": "gpx"`) responses from `route`, `optimized_route` and `trace_route`
+are returned as XML strings for both dictionary and string requests.
+
 ```python
 from pathlib import Path
 

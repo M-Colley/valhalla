@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 from tempfile import TemporaryDirectory
 import unittest
+from xml.etree import ElementTree
 from valhalla import Actor, ValhallaError, get_config, VALHALLA_PRINT_VERSION
 from valhalla.valhalla_build_config import config as default_config
 
@@ -203,6 +204,53 @@ class TestBinaryResponses(unittest.TestCase):
                 response = self.actor.route(request)
                 self.assertIsInstance(response, bytes)
                 self.assertGreater(len(response), 0)
+
+    def test_gpx_response_types(self):
+        route_query = {"locations": self.locations, "costing": "auto", "format": "gpx"}
+        trace_query = {
+            "shape": self.locations,
+            "shape_match": "map_snap",
+            "costing": "auto",
+            "format": "gpx",
+        }
+        legacy_query = {
+            "locations": self.locations,
+            "costing": "auto",
+            "directions_options": {"format": "gpx"},
+        }
+        for endpoint_name, query in (
+            ("route", route_query),
+            ("optimized_route", route_query),
+            ("trace_route", trace_query),
+            ("route", legacy_query),
+        ):
+            for request in (query, json.dumps(query)):
+                with self.subTest(
+                    endpoint=endpoint_name,
+                    request_type=type(request).__name__,
+                    legacy="directions_options" in query,
+                ):
+                    response = getattr(self.actor, endpoint_name)(request)
+                    self.assertIsInstance(response, str)
+                    gpx = ElementTree.fromstring(response)
+                    self.assertEqual(gpx.tag, "gpx")
+                    self.assertGreater(len(gpx.findall("wpt")), 1)
+                    self.assertGreater(len(gpx.findall("rte/rtept")), 1)
+
+    def test_unsupported_gpx_format_falls_back_to_json(self):
+        query = {
+            "locations": self.locations[:1],
+            "costing": "auto",
+            "contours": [{"time": 1}],
+            "format": "gpx",
+        }
+        response = self.actor.isochrone(query)
+        self.assertIsInstance(response, dict)
+        self.assertIn("features", response)
+        self.assertIn(211, [warning["code"] for warning in response["warnings"]])
+        raw_response = self.actor.isochrone(json.dumps(query))
+        self.assertIsInstance(raw_response, str)
+        self.assertEqual(json.loads(raw_response), response)
 
     def test_json_response_types(self):
         query = {
