@@ -3,6 +3,10 @@ set -u
 
 valhalla_image=$1
 
+if ! python3 "$(dirname "$0")/test_readonly_config.py"; then
+  exit 1
+fi
+
 custom_file_folder="$PWD/docker_tests/custom_files"
 admin_db="${custom_file_folder}/admins.sqlite"
 timezone_db="${custom_file_folder}/timezones.sqlite"
@@ -25,7 +29,7 @@ wait_for_docker() {
   done
 
   echo "max count reached"
-  docker logs --tail 50 valhalla_full
+  docker logs --tail 50 "${1:-valhalla_full}"
   exit 1
 }
 
@@ -195,8 +199,36 @@ fi
 echo "Final structure:"
 tree -L 3 -h "${custom_file_folder}"
 
-# cleanup
+# A read-only mount with prebuilt directory tiles must not need a hash file or archive.
+echo "#### Read-only prebuilt tile startup and restart ####"
 docker rm -f valhalla_repeat
+rm "${custom_file_folder}/${tileset_name}.tar" "${custom_file_folder}/file_hashes.txt"
+config_hash=$(sha256sum "${custom_file_folder}/valhalla.json")
+if ! docker run -d --name valhalla_readonly -p 8002:8002 -v "${custom_file_folder}:/custom_files:ro" \
+  -e tileset_name="$tileset_name" -e use_tiles_ignore_pbf=True -e force_rebuild=False \
+  -e update_existing_config=False -e build_elevation=False -e build_admins=True \
+  -e build_time_zones=True -e server_threads=1 "${valhalla_image}"; then
+  exit 1
+fi
+for attempt in 1 2; do
+  wait_for_docker valhalla_readonly
+  if ! eval "$route_request" | jq -e '.trip' >/dev/null; then
+    docker logs --tail 50 valhalla_readonly
+    exit 1
+  fi
+  if [[ "$(sha256sum "${custom_file_folder}/valhalla.json")" != "$config_hash" ]] ||
+     [[ -e "${custom_file_folder}/${tileset_name}.tar" ]] ||
+     [[ -e "${custom_file_folder}/file_hashes.txt" ]]; then
+    echo "Read-only startup unexpectedly changed its files"
+    exit 1
+  fi
+  if [[ "$attempt" == 1 ]]; then
+    docker restart valhalla_readonly >/dev/null
+  fi
+done
+
+# cleanup
+docker rm -f valhalla_readonly
 rm -r ${custom_file_folder}
 
 exit 0

@@ -71,6 +71,11 @@ Containers of this image have the following custom environment variables being p
 | `use_default_speeds_config` | `True` | `True` loads a JSON file used to enhance default speeds (or falls back to an existing `custom_files/default_speeds.json`) and sets the respective config entry. Read more [here](https://github.com/OpenStreetMapSpeeds/schema). |
 | `default_speeds_config_url` | [this url](https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json) | Remote location of the `default_speeds_config` JSON. |
 
+For a read-only `/custom_files` mount, supply an existing `valhalla.json` with paths valid inside
+the container and prebuilt tiles and supporting databases. Set `use_tiles_ignore_pbf=True` and
+`force_rebuild=False`. The container leaves the config unchanged and skips archive creation if no
+archive exists. Building or rebuilding data requires a writable mount.
+
 ## Container recipes
 
 For the following instructions to work, you'll need to have the image locally available already, either from [Github Docker registry](https://github.com/valhalla/valhalla/pkgs/container/valhalla-scripted) or from [local](#build-the-image).

@@ -15,6 +15,16 @@ if ! test -d "${CUSTOM_FILES}"; then
   mkdir "${CUSTOM_FILES}"
 fi
 
+# Test the mount itself: permission checks can report writable for root on a read-only bind mount.
+if ! mount_options=$(findmnt -n -o OPTIONS --target "${CUSTOM_FILES}"); then
+  echo "ERROR: Cannot determine mount options for ${CUSTOM_FILES}." >&2
+  exit 1
+fi
+FS_READONLY="False"
+case ",${mount_options}," in
+  *,ro,*) FS_READONLY="True" ;;
+esac
+
 CONFIG_FILE="${CUSTOM_FILES}/valhalla.json"
 TILE_DIR="${CUSTOM_FILES}/${tileset_name:-valhalla_tiles}"
 TILE_TAR="${CUSTOM_FILES}/${tileset_name:-valhalla_tiles}.tar"
@@ -46,6 +56,10 @@ hash_counter() {
 }
 
 hash_exists() {
+  if ! test -f "${HASH_FILE}"; then
+    echo "False"
+    return
+  fi
   old_hashes=""
   # Read the old hashes
   cat "${HASH_FILE}"
