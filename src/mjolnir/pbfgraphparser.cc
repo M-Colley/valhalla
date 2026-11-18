@@ -24,6 +24,7 @@
 #include <osmium/io/xml_input.hpp>
 #endif
 
+#include <span>
 #include <thread>
 #include <utility>
 
@@ -4015,6 +4016,7 @@ struct graph_parser {
       }
     } // for (const auto& tag : results)
 
+    const bool is_no_entry = restriction.type() == RestrictionType::kNoEntry;
     if (isProbable) {
       RestrictionType type = restriction.type();
       if (type == RestrictionType::kOnlyRightTurn || type == RestrictionType::kOnlyLeftTurn ||
@@ -4133,24 +4135,30 @@ struct graph_parser {
       }
     } else if (isRestriction && hasRestriction) {
       std::vector<uint64_t> vias;
+      std::vector<uint64_t> from_way_ids;
+      bool invalid_members = false;
 
       for (const auto& member : members) {
 
         // from and to must be of type 1(way).  via must be of type 0(node)
         if (member.role == "from" && member.member_type == osmium::item_type::way) {
           from_way_id = member.member_id;
+          if (is_no_entry && member.member_id != 0)
+            from_way_ids.push_back(member.member_id);
         } else if (member.role == "to" && member.member_type == osmium::item_type::way) {
           if (!restriction.to())
             restriction.set_to(member.member_id);
         } else if (member.role == "via" && member.member_type == osmium::item_type::node) {
           if (vias.size()) { // mix of nodes and ways.  Not supported yet.
             from_way_id = 0;
+            invalid_members = true;
             break;
           }
           restriction.set_via(member.member_id);
         } else if (member.role == "via" && member.member_type == osmium::item_type::way) {
           if (restriction.via()) { // mix of nodes and ways.  Not supported yet.
             from_way_id = 0;
+            invalid_members = true;
             break;
           }
           vias.push_back(member.member_id);
@@ -4162,9 +4170,16 @@ struct graph_parser {
         LOG_INFO("skipping restriction with vias > the max allowed.  OSMID: " +
                  std::to_string(osmid));
         from_way_id = 0;
+        invalid_members = true;
       }
       // Add the restriction to the list.
-      if (from_way_id != 0 && (restriction.via() || vias.size()) && restriction.to()) {
+      const bool has_from = is_no_entry ? !from_way_ids.empty() : from_way_id != 0;
+      if (!invalid_members && has_from && (restriction.via() || vias.size()) && restriction.to()) {
+        // no_entry can have several incoming ways. Other restrictions keep their
+        // existing single-from interpretation.
+        std::span<const uint64_t> from_ways(&from_way_id, 1);
+        if (!from_way_ids.empty())
+          from_ways = from_way_ids;
         // check for exceptions
         // isTypeRestriction == true means has restriction:<vehicle> key; otherwise, just a
         // restriction key
@@ -4254,19 +4269,21 @@ struct graph_parser {
               return; // bad data
             }
 
-            restriction.set_from(from_way_id);
             restriction.set_vias(vias);
             // for bi-directional we need to create the restriction in reverse.  flip the to and
             // from. also in order to avoid duplicate data in the from and to restrictions, we
             // only need to store the mode, from, and to for the to_restrictions.
-            to_restriction.set_from(restriction.to());
-            to_restriction.set_to(from_way_id);
-            to_restriction.set_modes(restriction.modes());
-            complex_restrictions_to_->push_back(to_restriction);
+            for (const auto from_id : from_ways) {
+              restriction.set_from(from_id);
+              to_restriction.set_from(restriction.to());
+              to_restriction.set_to(from_id);
+              to_restriction.set_modes(restriction.modes());
+              complex_restrictions_to_->push_back(to_restriction);
 
-            for (const auto& v : values) {
-              restriction.set_time_domain(v);
-              complex_restrictions_from_->push_back(restriction);
+              for (const auto& v : values) {
+                restriction.set_time_domain(v);
+                complex_restrictions_from_->push_back(restriction);
+              }
             }
             return;
           } // if (isConditional)
@@ -4276,20 +4293,23 @@ struct graph_parser {
 
         // complex restrictions -- add to end map.
         if (vias.size()) {
-          osmdata_.via_set.insert(from_way_id);
           osmdata_.via_set.insert(restriction.to());
-          restriction.set_from(from_way_id);
           restriction.set_vias(vias);
           // for bi-directional we need to create the restriction in reverse.  flip the to and from.
           // also in order to avoid duplicate data in the from and to restrictions, we only need
           // to store the mode, from, and to for the to_restrictions.
-          to_restriction.set_from(restriction.to());
-          to_restriction.set_to(from_way_id);
-          to_restriction.set_modes(restriction.modes());
-          complex_restrictions_to_->push_back(to_restriction);
-          complex_restrictions_from_->push_back(restriction);
+          for (const auto from_id : from_ways) {
+            osmdata_.via_set.insert(from_id);
+            restriction.set_from(from_id);
+            to_restriction.set_from(restriction.to());
+            to_restriction.set_to(from_id);
+            to_restriction.set_modes(restriction.modes());
+            complex_restrictions_to_->push_back(to_restriction);
+            complex_restrictions_from_->push_back(restriction);
+          }
         } else { // simple restriction
-          osmdata_.restrictions.insert(RestrictionsMultiMap::value_type(from_way_id, restriction));
+          for (const auto from_id : from_ways)
+            osmdata_.restrictions.insert(RestrictionsMultiMap::value_type(from_id, restriction));
         }
       }
     } else if (isMultipolygon && isPedestrian && isArea && pedestrian_areas_) {
