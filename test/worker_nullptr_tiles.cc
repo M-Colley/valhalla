@@ -13,9 +13,15 @@ using Seed_t = std::mt19937_64::result_type;
 namespace {
 
 constexpr size_t AttemptsCount = 1000;
+#ifdef DATA_TOOLS
 const auto Config = test::make_config("test/data/whitelion_tiles");
 constexpr auto TestRequest =
     R"({"locations":[{"lat":51.455768530466514,"lon":-2.5954368710517883},{"lat":51.456082740244824,"lon":-2.595050632953644}],"costing":"auto"})";
+#else
+const auto Config = test::make_config(VALHALLA_SOURCE_DIR "test/traffic_matcher_tiles");
+constexpr auto TestRequest =
+    R"({"locations":[{"lat":40.546115,"lon":-76.385076},{"lat":40.544232,"lon":-76.385752}],"costing":"auto"})";
+#endif
 
 class RandomGraphReader : public baldr::GraphReader {
 public:

@@ -205,10 +205,12 @@ TEST(GraphTileIntegrity, DownloadedTileIsCached) {
   EXPECT_TRUE(std::filesystem::exists(tile_dir / GraphTile::FileSuffix(tile_id)));
 }
 
+#ifdef DATA_TOOLS
 TEST(GraphTileVersion, VersionChecksum) {
   std::string tile_dir = VALHALLA_BUILD_DIR "test/data/utrecht_tiles";
 
   auto tile = GraphTile::Create(tile_dir, {3196, 0, 0});
+  ASSERT_NE(tile, nullptr);
 
   std::string expected_version = VALHALLA_VERSION;
   EXPECT_TRUE(tile->header()->version().compare(0, expected_version.size(), expected_version) == 0);
@@ -216,6 +218,7 @@ TEST(GraphTileVersion, VersionChecksum) {
   auto checksum = tile->header()->tile_checksum();
   EXPECT_GT(checksum, 0);
 }
+#endif
 
 struct RestrictionBuilder {
   std::vector<char> data;

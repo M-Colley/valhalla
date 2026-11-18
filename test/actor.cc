@@ -78,6 +78,7 @@ TEST(Actor, TraceAttributes) {
   EXPECT_THROW(actor.trace_attributes(request, &interrupt), test_exception_t);
 }
 
+#ifdef DATA_TOOLS
 TEST(Actor, Tile) {
   const auto utrecht_conf = test::make_config(VALHALLA_BUILD_DIR "test/data/utrecht_tiles");
   tyr::actor_t actor(utrecht_conf);
@@ -124,6 +125,7 @@ TEST(Actor, Tile) {
   EXPECT_TRUE(has_shortcuts);
   EXPECT_TRUE(has_access_restrictions);
 }
+#endif
 
 // TODO: test the rest of them
 
