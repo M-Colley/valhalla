@@ -30,7 +30,7 @@ namespace mjolnir {
         /* Emit to statsd: build.timing.<file_stem>.<func> */                                        \
         std::string _st_stem = relative_file_path;                                                   \
         /* strip directory and extension to get e.g. "elevationbuilder" */                           \
-        auto _st_slash = _st_stem.rfind('/');                                                        \
+        auto _st_slash = _st_stem.find_last_of("/\\");                                               \
         if (_st_slash != std::string::npos)                                                          \
           _st_stem = _st_stem.substr(_st_slash + 1);                                                 \
         auto _st_dot = _st_stem.rfind('.');                                                          \
