@@ -14,6 +14,7 @@
 #include <format>
 #include <set>
 #include <span>
+#include <vector>
 
 using namespace valhalla;
 using namespace valhalla::midgard;
@@ -41,6 +42,14 @@ struct linestring_handler_t {
   uint32_t result() {
     return count;
   }
+};
+
+struct linestring_points_t {
+  std::vector<vtzero::point> points;
+  void linestring_begin(uint32_t) {}
+  void linestring_point(vtzero::point point) { points.push_back(point); }
+  void linestring_end() const {}
+  std::vector<vtzero::point> result() { return points; }
 };
 } // namespace
 
@@ -113,6 +122,51 @@ TEST(VectorTilesBasic, TileGeneralization) {
   test_vertex_count(custom, 6);
   test_vertex_count({}, 2);
   test_vertex_count(custom, 6);
+}
+
+TEST(VectorTilesBasic, ClipsLineThatLeavesAndReenters) {
+  // At z14, the eastern boundary of this tile is longitude 0.02197265625.
+  // The endpoints are inside it and the middle shape point is outside its buffer.
+  const gurka::nodelayout layout = {{"A", {0.0205, 0.005}},
+                                    {"B", {0.0250, 0.010}},
+                                    {"C", {0.0205, 0.015}}};
+  const gurka::ways ways = {{"ABC", {{"highway", "primary"}}}};
+  const auto map = gurka::buildtiles(layout, ways, {}, {},
+                                     VALHALLA_BUILD_DIR "test/data/gurka_vt_reentry");
+  std::string tile_data;
+  gurka::do_action(Options::tile, map, "A", 14, "auto", {{"/generalize", "0"}}, nullptr,
+                   &tile_data);
+
+  vtzero::vector_tile tile{tile_data};
+  auto edges = tile.get_layer_by_name("edges");
+  EXPECT_EQ(edges.num_features(), 2);
+  std::set<int32_t> interior_ys;
+  edges.for_each_feature([&](const vtzero::feature&& feature) {
+    auto handler = linestring_points_t{};
+    const auto points = vtzero::decode_linestring_geometry(feature.geometry(), handler);
+    EXPECT_EQ(points.size(), 2);
+    for (const auto point : points) {
+      EXPECT_GE(point.x, -128);
+      EXPECT_LE(point.x, 4096 + 128);
+      EXPECT_GE(point.y, -128);
+      EXPECT_LE(point.y, 4096 + 128);
+    }
+    if (points.size() == 2) {
+      const bool first_on_boundary = points.front().x == 4096 + 128;
+      const bool last_on_boundary = points.back().x == 4096 + 128;
+      EXPECT_NE(first_on_boundary, last_on_boundary);
+      const auto interior = first_on_boundary ? points.back() : points.front();
+      EXPECT_GT(interior.x, 3750);
+      EXPECT_LT(interior.x, 4050);
+      interior_ys.insert(interior.y);
+    }
+    return true;
+  });
+  ASSERT_EQ(interior_ys.size(), 2);
+  EXPECT_GT(*interior_ys.begin(), 1200);
+  EXPECT_LT(*interior_ys.begin(), 1400);
+  EXPECT_GT(*interior_ys.rbegin(), 3000);
+  EXPECT_LT(*interior_ys.rbegin(), 3300);
 }
 
 TEST(VectorTilesBasic, TileRendering) {
