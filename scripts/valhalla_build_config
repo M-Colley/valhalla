@@ -276,15 +276,10 @@ config = {
     "meili": {
         "mode": "auto",
         "customizable": [
-            "mode",
             "search_radius",
             "turn_penalty_factor",
             "gps_accuracy",
             "interpolation_distance",
-            "sigma_z",
-            "beta",
-            "max_route_distance_factor",
-            "max_route_time_factor",
         ],
         "verbose": False,
         "default": {
@@ -616,7 +611,11 @@ help_text = {
     },
     "meili": {
         "mode": "Specify the default transport mode",
-        "customizable": "Specify which parameters are allowed to be customized by URL query parameters",
+        "customizable": (
+            "Allow request trace_options to override Meili settings. Supported names are "
+            "search_radius, gps_accuracy, turn_penalty_factor, interpolation_distance, "
+            "and breakage_distance."
+        ),
         "verbose": "Control verbose output for debugging",
         "default": {
             "sigma_z": "A non-negative value to specify the GPS accuracy (the variance of the normal distribution) of an incoming GPS sequence. It is also used to weight emission costs of measurements",
